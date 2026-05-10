@@ -1,10 +1,8 @@
 using System;
 using System.Collections.Generic;
 using HarmonyLib;
-#if WINDOWS
 using NAudio.CoreAudioApi;
 using NAudio.Wave;
-#endif
 using TMPro;
 using UnityEngine;
 using UnityEngine.Events;
@@ -20,9 +18,7 @@ public static class VoiceChatOptionsPatches
 	private static ToggleButtonBehaviour? _buttonPrefab;
 
 	private static readonly List<string> _micDevices = new();
-#if WINDOWS
 	private static readonly List<string> _spkDevices = new();
-#endif
 
 	private const string ButtonName = "VoiceChatOptionsButton";
 	private const float RowH = 0.54f;
@@ -180,7 +176,6 @@ public static class VoiceChatOptionsPatches
 		});
 		y -= RowH;
 
-#if WINDOWS
 		MakeCycleRow(VoiceChatLocalization.Tr("speaker"), y, _spkDevices,
 			ToDisplay(VoiceChatConfig.SpeakerDevice), sel =>
 			{
@@ -189,7 +184,6 @@ public static class VoiceChatOptionsPatches
 				VoiceChatRoom.Current?.SetSpeaker(v);
 			});
 		y -= RowH;
-#endif
 	}
 
 	private static void RefreshDeviceCaches()
@@ -198,7 +192,6 @@ public static class VoiceChatOptionsPatches
 		_micDevices.Add(VoiceChatLocalization.Tr("default"));
 		try
 		{
-#if WINDOWS
 			// Windows: enumerate via NAudio WaveIn
 			for (int i = 0; i < WaveInEvent.DeviceCount; i++)
 			{
@@ -206,16 +199,9 @@ public static class VoiceChatOptionsPatches
 				if (!string.IsNullOrWhiteSpace(cap.ProductName))
 					_micDevices.Add(cap.ProductName);
 			}
-#elif ANDROID
-			// Android: enumerate via Unity Microphone API
-			foreach (var dev in AndroidMicrophone.GetDeviceNames())
-				if (!string.IsNullOrWhiteSpace(dev))
-					_micDevices.Add(dev);
-#endif
 		}
 		catch { }
 
-#if WINDOWS
 		_spkDevices.Clear();
 		_spkDevices.Add(VoiceChatLocalization.Tr("default"));
 		try
@@ -226,7 +212,6 @@ public static class VoiceChatOptionsPatches
 					_spkDevices.Add(dev.FriendlyName);
 		}
 		catch { }
-#endif
 	}
 
 	private static void MakeVolumeRow(string label, float y, float value, Action<float> onChange)

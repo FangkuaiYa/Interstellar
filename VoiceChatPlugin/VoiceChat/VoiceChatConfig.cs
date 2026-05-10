@@ -11,9 +11,7 @@ public static class VoiceChatConfig
 
     // Local audio device config
     public static string MicrophoneDevice => _mic?.Value  ?? "";
-#if WINDOWS
     public static string SpeakerDevice    => _speaker?.Value ?? "";
-#endif
     public static float  MasterVolume     => _masterVol?.Value ?? 1f;
     public static float  MicVolume        => _micVol?.Value    ?? 1f;
 
@@ -47,11 +45,7 @@ public static class VoiceChatConfig
     public static bool  HostImpostorPrivateRadio => _hostImpRadio?.Value     ?? false;
     public static bool  HostOnlyMeetingOrLobby   => _hostMeetingOnly?.Value  ?? false;
 
-#if WINDOWS
     private static ConfigEntry<string>? _mic, _speaker;
-#else
-    private static ConfigEntry<string>? _mic;
-#endif
     private static ConfigEntry<float>?  _masterVol, _micVol;
     private static ConfigEntry<float>?  _hostMaxDist;
     private static ConfigEntry<bool>?   _hostWallsBlock, _hostSight, _hostImpGhost;
@@ -62,10 +56,8 @@ public static class VoiceChatConfig
     {
         _mic       = cfg.Bind("VoiceChat", "MicrophoneDevice", "",
                         "Microphone device name. Leave empty for default.");
-#if WINDOWS
         _speaker   = cfg.Bind("VoiceChat", "SpeakerDevice", "",
                         "Speaker device name. Leave empty for default.");
-#endif
         _masterVol = cfg.Bind("VoiceChat", "MasterVolume", 1f,
                         new ConfigDescription("Master output volume", new AcceptableValueRange<float>(0.1f, 2f)));
         _micVol    = cfg.Bind("VoiceChat", "MicVolume", 1f,
@@ -88,9 +80,7 @@ public static class VoiceChatConfig
     }
 
     public static void SetMicrophoneDevice(string v)       => _mic!.Value = v;
-#if WINDOWS
     public static void SetSpeakerDevice(string v)          => _speaker!.Value = v;
-#endif
     public static void SetMasterVolume(float v)            => _masterVol!.Value = v;
     public static void SetMicVolume(float v)               => _micVol!.Value = v;
     public static void SetHostMaxChatDistance(float v)     => _hostMaxDist!.Value = Math.Clamp(v, 1.5f, 20f);

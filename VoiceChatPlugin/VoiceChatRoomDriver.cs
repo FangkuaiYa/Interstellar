@@ -29,7 +29,7 @@ internal static class VoiceChatRoomDriver
         // Nebula: shouldNotUseVC = !option || IsLocalServer()
         bool shouldNotUseVC = AmongUsClient.Instance == null
             || AmongUsClient.Instance.GameState != InnerNet.InnerNetClient.GameStates.Joined
-            || IsLocalServer();
+            /*|| IsLocalServer()*/;
 
         if (shouldNotUseVC)
         {

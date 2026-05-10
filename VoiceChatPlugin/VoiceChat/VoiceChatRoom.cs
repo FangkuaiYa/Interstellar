@@ -2,10 +2,8 @@ using Concentus;
 using Hazel;
 using HarmonyLib;
 using VoiceChatPlugin.Audio;
-#if WINDOWS
 using NAudio.Wave;
 using NAudio.CoreAudioApi;
-#endif
 using UnityEngine;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -23,9 +21,6 @@ namespace VoiceChatPlugin.VoiceChat;
 /// Platform support:
 ///   WINDOWS  - Outgoing mic: NAudio WaveInEvent on its own callback thread.
 ///              Incoming speaker: NAudio WasapiOut on its own playback thread.
-///   ANDROID  - Outgoing mic: Unity Microphone API polled each frame (main thread).
-///              Incoming speaker: Unity AudioSource + streaming AudioClip
-///              (PCMReaderCallback on Unity audio thread).
 ///
 /// Outgoing pipeline (both platforms):
 ///   PCM float samples (48 kHz mono)
@@ -81,27 +76,15 @@ public class VoiceChatRoom
     // Encoded packets queued from mic capture path, drained on main thread
     private readonly ConcurrentQueue<byte[]> _sendQueue = new();
 
-#if WINDOWS
     private WaveInEvent? _waveIn;
     public bool UsingMicrophone => _waveIn != null;
-#elif ANDROID
-    private AndroidMicrophone? _androidMic;
-    public bool UsingMicrophone => _androidMic != null;
-#else
-    public bool UsingMicrophone => false;
-#endif
-
     public float LocalMicLevel   => _localMicLevel;
     private volatile float _localMicLevel;
     public bool Mute  { get; private set; }
     public int  SampleRate => AudioHelpers.ClockRate;
 
     // Speaker - platform-specific output backend
-#if WINDOWS
     private WasapiOut? _waveOut;
-#elif ANDROID
-    private AndroidSpeaker? _androidSpeaker;
-#endif
 
     // Incoming packet queue: Hazel thread -> main thread
     private readonly record struct IncomingPacket(int SenderId, byte PacketType, byte[] Data, byte PlayerId, string PlayerName);
@@ -179,19 +162,7 @@ public class VoiceChatRoom
 
         SetMicrophone(VoiceChatConfig.MicrophoneDevice);
 
-#if WINDOWS
         SetSpeaker(VoiceChatConfig.SpeakerDevice);
-#elif ANDROID
-        // Nebula pattern: use the persistent ResidentObject (DontDestroyOnLoad) as the
-        // AudioSource host so the speaker is never accidentally destroyed when
-        // HudManager rebuilds on scene transitions.
-        // Nebula: AudioSource added to ResidentBehaviour.gameObject + MarkDontUnload.
-        // AndroidSpeaker() replicates this via VoiceChatPluginMain.ResidentObject.
-        if (VoiceChatPluginMain.ResidentObject != null)
-            InitAndroidSpeaker();
-        else
-            VoiceChatPluginMain.Logger.LogWarning("[VC] Android: ResidentObject not available.");
-#endif
 
         VoiceChatPluginMain.Logger.LogInfo("[VC] VoiceChatRoom constructed (Hazel transport).");
     }
@@ -203,9 +174,6 @@ public class VoiceChatRoom
     public void SetMasterVolume(float v)
     {
         _masterVolumeProperty.Volume = v;
-#if ANDROID
-        _androidSpeaker?.SetMasterVolume(v);
-#endif
     }
 
     public void SetMicVolume(float v) => _micVolume = Math.Clamp(v, 0f, 2f);
@@ -222,14 +190,9 @@ public class VoiceChatRoom
 
     public void SetMicrophone(string deviceName)
     {
-#if WINDOWS
         SetMicrophoneWindows(deviceName);
-#elif ANDROID
-        SetMicrophoneAndroid(deviceName);
-#endif
     }
 
-#if WINDOWS
     private void SetMicrophoneWindows(string deviceName)
     {
         try
@@ -270,54 +233,9 @@ public class VoiceChatRoom
             _encoder = null;
         }
     }
-#endif
-
-#if ANDROID
-    private void SetMicrophoneAndroid(string deviceName)
-    {
-        // Nebula: CheckAndShowConfirmPopup wraps microphone start on Android.
-        // Nebula's latest code shows a "noMic" confirmation dialog before allowing mic.
-        // We use a coroutine to request Android microphone permission first,
-        // then start capturing once authorized — mirroring Nebula's intent.
-        if (VoiceChatPluginMain.ResidentObject != null)
-        {
-            var behaviour = VoiceChatPluginMain.ResidentObject.GetComponent<PermissionHelper>()
-                ?? VoiceChatPluginMain.ResidentObject.AddComponent<PermissionHelper>();
-            behaviour.RequestMicAndStart(this, deviceName ?? "");
-        }
-        else
-        {
-            StartMicNow(deviceName ?? "");
-        }
-    }
-
-    // Called by PermissionHelper after permission is granted (or immediately if already granted).
-    internal void StartMicNow(string deviceName)
-    {
-        try
-        {
-            _androidMic?.Stop();
-            _androidMic?.Dispose();
-            _encoder?.Dispose();
-
-            _encoder    = AudioHelpers.GetOpusEncoder();
-            // Nebula: interstellarRoom.Microphone = new ManualMicrophone();
-            _androidMic = new AndroidMicrophone();
-            _androidMic.DataAvailable += OnAndroidMicData;
-            _androidMic.Start(deviceName);
-        }
-        catch (Exception ex)
-        {
-            VoiceChatPluginMain.Logger.LogError($"[VC] Android mic init failed: {ex.Message}");
-            _androidMic = null;
-            _encoder    = null;
-        }
-    }
-#endif
 
     // Speaker
 
-#if WINDOWS
     public void SetSpeaker(string deviceName)
     {
         try
@@ -357,34 +275,11 @@ public class VoiceChatRoom
             _waveOut = null;
         }
     }
-#endif
-
-#if ANDROID
-    private void InitAndroidSpeaker()
-    {
-        try
-        {
-            _androidSpeaker?.Dispose();
-            // Nebula: ManualSpeaker.Read() pulls from the Interstellar graph endpoint.
-            // We pass _audioManager.Endpoint so the PCMReaderCallback drives the
-            // full audio routing graph (volume, pan, reverb, radio) — same as Nebula.
-            if (_audioManager.Endpoint == null)
-                throw new InvalidOperationException("AudioManager endpoint is null");
-            _androidSpeaker = new AndroidSpeaker(_audioManager.Endpoint);
-        }
-        catch (Exception ex)
-        {
-            VoiceChatPluginMain.Logger.LogError($"[VC] Android speaker init failed: {ex.Message}");
-            _androidSpeaker = null;
-        }
-    }
-#endif
 
     // ======================================================================
     // Outgoing mic data capture
     // ======================================================================
 
-#if WINDOWS
     private void OnMicDataAvailableWindows(object? sender, WaveInEventArgs e)
     {
         if (Mute || _encoder == null)
@@ -409,39 +304,6 @@ public class VoiceChatRoom
 
         EncodeAndEnqueue(_pcmConvertBuf, samples);
     }
-#endif
-
-#if ANDROID
-    // DataAvailable callback from AndroidMicrophoneInput - fires on main thread via Tick().
-    private void OnAndroidMicData(float[] buf, int length)
-    {
-        if (Mute || _encoder == null)
-        {
-            _localMicLevel = 0f;
-            return;
-        }
-
-        const int frameSize = 960; // 20 ms @ 48 kHz
-        int offset = 0;
-        while (offset + frameSize <= length)
-        {
-            if (_pcmConvertBuf == null || _pcmConvertBuf.Length < frameSize)
-                _pcmConvertBuf = new float[frameSize];
-
-            float level = 0f;
-            for (int i = 0; i < frameSize; i++)
-            {
-                float s = buf[offset + i] * _micVolume;
-                _pcmConvertBuf[i] = s;
-                float abs = s < 0 ? -s : s;
-                if (abs > level) level = abs;
-            }
-            _localMicLevel = level;
-            EncodeAndEnqueue(_pcmConvertBuf, frameSize);
-            offset += frameSize;
-        }
-    }
-#endif
 
     private void EncodeAndEnqueue(float[] pcm, int sampleCount)
     {
@@ -480,12 +342,6 @@ public class VoiceChatRoom
 
     public void Update()
     {
-#if ANDROID
-        // Nebula pattern: PushAudioData() is called each frame from UpdateInternal().
-        // We replicate this with Tick() which drains new mic samples and fires DataAvailable.
-        PollAndroidMic();
-#endif
-
         DrainSendQueue();
         DrainReceiveQueue();
         PruneDisconnectedClients();
@@ -528,13 +384,6 @@ public class VoiceChatRoom
                 client.UpdateTaskPhase(listenerPos, speakerCache, _virtualMics, localInVent, _commsSabActive);
         }
     }
-
-#if ANDROID
-    private void PollAndroidMic()
-    {
-        _androidMic?.Tick();
-    }
-#endif
 
     private void DrainSendQueue()
     {
@@ -699,25 +548,15 @@ public class VoiceChatRoom
 
     public void Close()
     {
-#if WINDOWS
         try { _waveIn?.StopRecording(); } catch { }
         try { _waveIn?.Dispose(); } catch { }
         _waveIn = null;
-#elif ANDROID
-        try { _androidMic?.Stop(); } catch { }
-        try { _androidMic?.Dispose(); } catch { }
-        _androidMic = null;
-        try { _androidSpeaker?.Dispose(); } catch { }
-        _androidSpeaker = null;
-#endif
 
         while (_sendQueue.TryDequeue(out _)) { }
         while (_receiveQueue.TryDequeue(out _)) { }
 
-#if WINDOWS
         try { _waveOut?.Stop(); _waveOut?.Dispose(); } catch { }
         _waveOut = null;
-#endif
 
         _encoder?.Dispose();
         _encoder = null;

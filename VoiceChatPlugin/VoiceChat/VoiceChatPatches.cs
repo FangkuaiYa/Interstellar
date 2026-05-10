@@ -16,14 +16,12 @@ namespace VoiceChatPlugin.VoiceChat;
 ///   - MeetingHud speaking indicator — UI-only, no lifecycle impact
 ///   - VoiceChatOptionsPatches — settings UI, harmless
 ///   - VoiceVolumeMenu — per-player volume, harmless
-///   - Windows keyboard shortcuts — no Android equivalent, guarded by #if WINDOWS
 /// </summary>
 [HarmonyPatch]
 public static class VoiceChatPatches
 {
     // Windows keyboard shortcuts only (Nebula uses VirtualInput, not KeyboardJoystick patch,
     // but since we have no VirtualInput system we keep this Windows-only).
-#if WINDOWS
     [HarmonyPostfix, HarmonyPatch(typeof(KeyboardJoystick), nameof(KeyboardJoystick.Update))]
     static void KeyboardUpdate_Post()
     {
@@ -37,5 +35,4 @@ public static class VoiceChatPatches
             VoiceChatHudState.ToggleSpeakerPublic();
         }
     }
-#endif
 }
