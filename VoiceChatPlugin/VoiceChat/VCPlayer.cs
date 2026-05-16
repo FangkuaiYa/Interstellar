@@ -1,8 +1,6 @@
-using System.Collections.Generic;
-using VoiceChatPlugin.Audio;
-
+using Interstellar.Routing;
+using Interstellar.Routing.Router;
 using UnityEngine;
-using System;
 
 namespace VoiceChatPlugin.VoiceChat;
 
@@ -15,8 +13,6 @@ public class VCPlayer
     private byte           _playerId   = byte.MaxValue;
     private string         _playerName = "Unknown";
     private PlayerControl? _mappedPlayer;
-
-    private readonly AudioRoutingInstance _instance;
 
     public string PlayerName => _playerName;
     public byte   PlayerId   => _playerId;
@@ -34,7 +30,6 @@ public class VCPlayer
         VolumeRouter         clientVolume,
         LevelMeterRouter     levelMeter)
     {
-        _instance     = instance;
         _imager       = imager.GetProperty(instance);
         _normalVolume = normalVolume.GetProperty(instance);
         _ghostVolume  = ghostVolume.GetProperty(instance);
@@ -44,10 +39,6 @@ public class VCPlayer
         _clientVolume.Volume = 1f;
         MuteAll();
     }
-
-    // Push decoded PCM into the Interstellar audio graph for this client slot.
-    internal void AddSamples(float[] samples, int count)
-        => _instance.AddSamples(samples, 0, count);
 
     public void UpdateProfile(byte playerId, string playerName)
     {
@@ -61,24 +52,6 @@ public class VCPlayer
     {
         _mappedPlayer = null;
         MuteAll();
-    }
-
-    // Attempt to resolve the Among Us PlayerControl from the Hazel client ID.
-    internal void TryResolveFromClientId(int clientId)
-    {
-        if (AmongUsClient.Instance == null) return;
-        foreach (var pc in PlayerControl.AllPlayerControls)
-        {
-            if (!pc) continue;
-            var cl = AmongUsClient.Instance.GetClientFromCharacter(pc);
-            if (cl != null && cl.Id == clientId)
-            {
-                _playerId     = pc.PlayerId;
-                _playerName   = pc.name;
-                _mappedPlayer = pc;
-                return;
-            }
-        }
     }
 
     private void CheckMapping()
@@ -123,11 +96,19 @@ public class VCPlayer
 
         if (s.OnlyGhostsCanTalk && !localDead) { MuteAll(); return; }
 
+        // Dead players hear everyone during meetings
         if (localDead)
         {
-            _normalVolume.Volume = 0f;
+            _normalVolume.Volume = targetDead ? 0f : 1f;
             _ghostVolume.Volume  = targetDead ? 1f : 0f;
             _radioVolume.Volume  = 0f;
+            return;
+        }
+
+        // ImpostorPrivateRadio: non-impostors don't hear non-dead impostor speakers
+        if (s.ImpostorPrivateRadio && targetImp && !targetDead && !localImp)
+        {
+            MuteAll();
             return;
         }
 
@@ -139,12 +120,49 @@ public class VCPlayer
             return;
         }
 
+        // Local mic in impostor-only mode: hear impostors on radio, normal on normal
+        if (VoiceChatHudState.IsImpostorRadioOnly && localImp)
+        {
+            if (targetImp && !targetDead)
+            {
+                _normalVolume.Volume = 0f;
+                _ghostVolume.Volume  = 0f;
+                _radioVolume.Volume  = 1f;
+            }
+            else if (!targetDead)
+            {
+                _normalVolume.Volume = 1f;
+                _ghostVolume.Volume  = 0f;
+                _radioVolume.Volume  = 0f;
+            }
+            else
+            {
+                MuteAll();
+            }
+            return;
+        }
+
         _normalVolume.Volume = targetDead ? 0f : 1f;
         _ghostVolume.Volume  = 0f;
         _radioVolume.Volume  = 0f;
     }
 
     private float _wallCoeff = 1f;
+
+    private static float CalcWallCoeff(Vector2 listener, Vector2 speaker, ref float coeff, VoiceChatRoomSettings s)
+    {
+        if (!s.WallsBlockSound) { coeff = 1f; return 1f; }
+
+        if (s.OnlyHearInSight)
+        {
+            bool inSight = !Physics2D.Linecast(listener, speaker, LayerMask.GetMask("Shadow"));
+            if (!inSight) { coeff = 0f; return 0f; }
+        }
+
+        bool hasWall = Physics2D.Linecast(listener, speaker, LayerMask.GetMask("Shadow"));
+        coeff = coeff + ((hasWall ? 0f : 1f) - coeff) * Math.Clamp(Time.deltaTime * 4f, 0f, 1f);
+        return coeff;
+    }
 
     internal void UpdateTaskPhase(
         Vector2? listenerPos,
@@ -156,28 +174,50 @@ public class VCPlayer
         CheckMapping();
         if (!IsMapped || !listenerPos.HasValue) { MuteAll(); return; }
 
-        var  s            = VoiceChatConfig.SyncedRoomSettings;
-        var  targetPos    = (Vector2)_mappedPlayer!.transform.position;
-        bool localDead    = PlayerControl.LocalPlayer && PlayerControl.LocalPlayer.Data?.IsDead == true;
-        bool targetDead   = _mappedPlayer.Data?.IsDead == true;
-        bool localImp     = PlayerControl.LocalPlayer && PlayerControl.LocalPlayer.Data?.Role?.IsImpostor == true;
-        bool targetImp    = _mappedPlayer.Data?.Role?.IsImpostor == true;
+        var  s          = VoiceChatConfig.SyncedRoomSettings;
+        var  targetPos  = (Vector2)_mappedPlayer!.transform.position;
+        bool localDead  = PlayerControl.LocalPlayer && PlayerControl.LocalPlayer.Data?.IsDead == true;
+        bool targetDead = _mappedPlayer.Data?.IsDead == true;
+        bool localImp   = PlayerControl.LocalPlayer && PlayerControl.LocalPlayer.Data?.Role?.IsImpostor == true;
+        bool targetImp  = _mappedPlayer.Data?.Role?.IsImpostor == true;
         bool targetInVent = _mappedPlayer.inVent;
 
         if (s.OnlyMeetingOrLobby) { MuteAll(); return; }
         if (s.OnlyGhostsCanTalk && !localDead) { MuteAll(); return; }
         if (commsSabActive && s.CommsSabDisables && !localImp && !localDead) { MuteAll(); return; }
 
+        float dist   = Vector2.Distance(targetPos, listenerPos.Value);
+        float volume = VoiceChatRoom.GetVolume(dist, s.MaxChatDistance);
+        float pan    = VoiceChatRoom.GetPan(listenerPos.Value.x, targetPos.x);
+
         if (localDead)
         {
-            _normalVolume.Volume = 0f;
-            _ghostVolume.Volume  = targetDead ? 1f : 0f;
-            _radioVolume.Volume  = 0f;
-            _imager.Pan          = 0f;
+            // Dead players hear: alive on normal (spatial), dead on ghost
+            if (targetDead)
+            {
+                _normalVolume.Volume = 0f;
+                _ghostVolume.Volume  = 1f;
+                _radioVolume.Volume  = 0f;
+                _imager.Pan          = 0f;
+            }
+            else
+            {
+                _normalVolume.Volume = volume * CalcWallCoeff(listenerPos.Value, targetPos, ref _wallCoeff, s);
+                _ghostVolume.Volume  = 0f;
+                _radioVolume.Volume  = 0f;
+                _imager.Pan          = pan;
+            }
             return;
         }
 
-        // FIX #2: ImpostorPrivateRadio is a host-configured room setting that creates a
+        // ImpostorPrivateRadio: non-impostors don't hear non-dead impostor speakers
+        if (s.ImpostorPrivateRadio && targetImp && !targetDead && !localImp)
+        {
+            MuteAll();
+            return;
+        }
+
+        // ImpostorPrivateRadio: impostors hear each other on radio channel
         if (s.ImpostorPrivateRadio && localImp && targetImp && !targetDead)
         {
             _normalVolume.Volume = 0f;
@@ -187,14 +227,35 @@ public class VCPlayer
             return;
         }
 
+        // Local mic in impostor-only mode: hear impostors on radio, normal players on normal
+        if (VoiceChatHudState.IsImpostorRadioOnly && localImp)
+        {
+            if (targetImp && !targetDead)
+            {
+                _normalVolume.Volume = 0f;
+                _ghostVolume.Volume  = 0f;
+                _radioVolume.Volume  = 1f;
+            }
+            else if (!targetDead)
+            {
+                _normalVolume.Volume = volume * CalcWallCoeff(listenerPos.Value, targetPos, ref _wallCoeff, s);
+                _ghostVolume.Volume  = 0f;
+                _radioVolume.Volume  = 0f;
+            }
+            else
+            {
+                MuteAll();
+            }
+            _imager.Pan = 0f;
+            return;
+        }
+
         if (localImp && targetDead && s.ImpostorHearGhosts)
         {
-            float d   = Vector2.Distance(targetPos, listenerPos.Value);
-            float vol = VoiceChatRoom.GetVolume(d, s.MaxChatDistance);
             _normalVolume.Volume = 0f;
-            _ghostVolume.Volume  = vol;
+            _ghostVolume.Volume  = volume;
             _radioVolume.Volume  = 0f;
-            _imager.Pan          = VoiceChatRoom.GetPan(listenerPos.Value.x, targetPos.x);
+            _imager.Pan          = pan;
             return;
         }
 
@@ -210,28 +271,8 @@ public class VCPlayer
             MuteAll(); return;
         }
 
-        float dist   = Vector2.Distance(targetPos, listenerPos.Value);
-        float volume = VoiceChatRoom.GetVolume(dist, s.MaxChatDistance);
-        float pan    = VoiceChatRoom.GetPan(listenerPos.Value.x, targetPos.x);
-        _imager.Pan  = pan;
-
-        if (s.OnlyHearInSight)
-        {
-            bool inSight = !Physics2D.Linecast(listenerPos.Value, targetPos, LayerMask.GetMask("Shadow"));
-            if (!inSight) { MuteAll(); return; }
-        }
-
-        if (s.WallsBlockSound)
-        {
-            bool hasWall = Physics2D.Linecast(listenerPos.Value, targetPos, LayerMask.GetMask("Shadow"));
-            _wallCoeff   = _wallCoeff + ((hasWall ? 0f : 1f) - _wallCoeff) * Math.Clamp(Time.deltaTime * 4f, 0f, 1f);
-        }
-        else
-        {
-            _wallCoeff = 1f;
-        }
-
-        _normalVolume.Volume = volume * _wallCoeff;
+        _imager.Pan = pan;
+        _normalVolume.Volume = volume * CalcWallCoeff(listenerPos.Value, targetPos, ref _wallCoeff, s);
         _ghostVolume.Volume  = 0f;
         _radioVolume.Volume  = 0f;
     }

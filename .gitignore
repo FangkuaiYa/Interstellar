@@ -4,6 +4,7 @@
 obj/
 bin/
 .qodo/
+.claude/
 
 *.user
 *.lock.json

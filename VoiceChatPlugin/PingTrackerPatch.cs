@@ -8,39 +8,32 @@ using Object = UnityEngine.Object;
 
 namespace VoiceChatPlugin;
 
-/// <summary>
-/// BCL-style speaking bar at the top of the screen.
-///
-/// When players are talking a row of PoolablePlayer icons (cloned from the
-/// existing MeetingHud vote-area player icons) appears at the top, one icon
-/// per speaking player, each tinted in that player's Palette colour.
-/// Outside of meetings we fall back to coloured name-text because
-/// PoolablePlayer icons require the MeetingHud prefab chain to be alive.
-///
-/// The original PingTracker ping text is hidden.
-/// </summary>
 [HarmonyPatch(typeof(PingTracker), nameof(PingTracker.Update))]
 public static class PingTrackerPatch
 {
     private const float SpeakingThreshold = 0.01f;
 
-    // Root container anchored to top-centre of screen
     private static GameObject?    _barRoot;
     private static AspectPosition? _barAspect;
 
-    // One slot per speaking player  (keyed by playerId)
     private static readonly Dictionary<byte, SpeakerSlot> _slots = new();
 
     static void Postfix(PingTracker __instance)
     {
         if (__instance?.text == null) return;
 
+        // FIX: Speaker mute — hide speaking bar when muted
+        if (VoiceChatHudState.IsSpeakerMuted)
+        {
+            if (_barRoot != null) _barRoot.SetActive(false);
+            return;
+        }
+
         EnsureBar(__instance);
         if (_barRoot == null) return;
 
         var room = VoiceChatRoom.Current;
 
-        // Build set of speaking playerIds
         var speakingIds = new HashSet<byte>();
         if (room != null)
         {
@@ -55,20 +48,17 @@ public static class PingTrackerPatch
                 speakingIds.Add(localId);
         }
 
-        // Remove slots for players who stopped talking
         var toRemove = new List<byte>();
         foreach (var kv in _slots)
             if (!speakingIds.Contains(kv.Key)) toRemove.Add(kv.Key);
         foreach (var id in toRemove) RemoveSlot(id);
 
-        // Add/refresh slots for speaking players
         foreach (byte id in speakingIds)
         {
             if (!_slots.ContainsKey(id))
                 AddSlot(id);
         }
 
-        // Reposition slots in a horizontal row
         LayoutSlots();
 
         _barRoot.SetActive(speakingIds.Count > 0);
@@ -83,7 +73,7 @@ public static class PingTrackerPatch
 
         _barAspect    = _barRoot.AddComponent<AspectPosition>();
         _barAspect.Alignment        = AspectPosition.EdgeAlignments.Top;
-        _barAspect.DistanceFromEdge = new Vector3(0f, 0.25f, 0f);
+        _barAspect.DistanceFromEdge = new Vector3(0f, 0.8f, 0f);
         _barAspect.AdjustPosition();
 
         _barRoot.SetActive(false);
@@ -95,11 +85,9 @@ public static class PingTrackerPatch
 
         var slot = new SpeakerSlot();
 
-        // Try to get the player's cosmetics via their PlayerControl
         PlayerControl? pc = FindPlayer(playerId);
         Color playerColor = GetPaletteColor(pc);
 
-        // ── Icon: clone PlayerIcon from MeetingHud if available ─────────────
         bool gotIcon = false;
         if (MeetingHud.Instance != null)
         {
@@ -108,13 +96,10 @@ public static class PingTrackerPatch
                 if (state == null || state.TargetPlayerId != playerId) continue;
                 if (state.PlayerIcon == null) break;
 
-                // Clone the PoolablePlayer icon
                 var clone = Object.Instantiate(
                     state.PlayerIcon.gameObject, _barRoot.transform);
                 clone.SetActive(true);
-                // Scale down to ~0.35 world-units wide (vote-area icon is ~0.75)
                 clone.transform.localScale = Vector3.one * 0.45f;
-                // Disable the mask so it renders normally outside the vote panel
                 foreach (var sr in clone.GetComponentsInChildren<SpriteRenderer>())
                     sr.maskInteraction = SpriteMaskInteraction.None;
 
@@ -213,7 +198,6 @@ public static class PingTrackerPatch
         return Color.white;
     }
 
-    // Cached 64x64 circle sprite used as fallback icon
     private static Sprite? _circleSprite;
     private static Sprite CreateCircleSprite()
     {

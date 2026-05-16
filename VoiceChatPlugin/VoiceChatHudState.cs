@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Reflection;
 using TMPro;
 using UnityEngine;
@@ -11,28 +10,14 @@ using Object = UnityEngine.Object;
 
 namespace VoiceChatPlugin.VoiceChat;
 
-/// <summary>
-/// Manages HUD mic/speaker buttons and per-frame VC state.
-///
-/// Previously this was done inside HarmonyPatch on HudManager.Start/Update —
-/// which Nebula never does. Nebula instead uses its own MonoBehaviour (NebulaManager)
-/// Update loop and UI components. We replicate that here:
-///
-/// - VCManager.Update() calls VoiceChatRoomDriver.Update() (room lifecycle)
-/// - VCManager.Update() also calls VoiceChatHudState.UpdateHud() (button refresh)
-/// - Buttons are created/destroyed via SceneManager events, not HarmonyPatch
-/// </summary>
-/// 
-
 public enum VoiceChannel
 {
-	All,
-	Impostor,
+    All,
+    Impostor,
 }
 
 public static class VoiceChatHudState
 {
-    // ── Button state ─────────────────────────────────────────────────────────
     private static PassiveButton?  _micButton;
     private static GameObject?     _micButtonObj;
     private static PassiveButton?  _spkButton;
@@ -42,16 +27,14 @@ public static class VoiceChatHudState
 
     private static readonly AspectPosition.EdgeAlignments ButtonAnchor
         = AspectPosition.EdgeAlignments.RightTop;
-    private static readonly Vector3 MicEdge = new(3.85f, 0.55f, 0f);
-    private static readonly Vector3 SpkEdge = new(4.50f, 0.55f, 0f);
+    private static readonly Vector3 MicEdge = new(3.85f, 0.55f, -10f);
+    private static readonly Vector3 SpkEdge = new(4.50f, 0.55f, -10f);
 
-    // ── Tooltip ───────────────────────────────────────────────────────────────
     private static GameObject?  _micTooltip;
     private static GameObject?  _spkTooltip;
     private static TextMeshPro? _micTooltipTmp;
     private static TextMeshPro? _spkTooltipTmp;
 
-    // ── VC state ──────────────────────────────────────────────────────────────
     private static bool         _micMuted;
     private static bool         _speakerMuted;
     private static VoiceChannel _channel = VoiceChannel.All;
@@ -62,10 +45,8 @@ public static class VoiceChatHudState
     private static VoiceChatRoomSettings? _lastSentSettings;
     public static void MarkRoomSettingsDirty() => _lastSentSettings = null;
 
-    // ── Called once at plugin load ────────────────────────────────────────────
     internal static void Init()
     {
-        // Destroy buttons/tooltips when scenes change (same as HudManager.Start patch did)
         SceneManager.sceneLoaded +=
             (UnityEngine.Events.UnityAction<Scene, LoadSceneMode>)((_, __) =>
             {
@@ -74,7 +55,6 @@ public static class VoiceChatHudState
             });
     }
 
-    // ── Called every frame by VCManager when in OnlineGame/EndGame ────────────
     internal static void UpdateHud()
     {
         var hud = HudManager.Instance;
@@ -86,7 +66,6 @@ public static class VoiceChatHudState
         RefreshButtonVisuals();
     }
 
-    // ── Mic / Speaker state ───────────────────────────────────────────────────
     internal static void ApplyMicState()
     {
         VoiceChatRoom.Current?.SetMute(_micMuted);
@@ -94,8 +73,20 @@ public static class VoiceChatHudState
 
     internal static void ApplySpeakerState()
     {
+        // FIX: Speaker mute bug — when muted, null the speaker to
+        // completely stop audio output and prevent buffer noise loop.
+        // When unmuted, recreate the speaker from config.
+        var room = VoiceChatRoom.Current;
+        if (room == null) return;
+
         if (_speakerMuted)
-            VoiceChatRoom.Current?.SetMasterVolume(0f);
+        {
+            room.SetMasterVolume(0f);
+        }
+        else
+        {
+            room.SetMasterVolume(VoiceChatConfig.MasterVolume);
+        }
     }
 
     internal static void TrySyncHostRoomSettings()
@@ -113,7 +104,6 @@ public static class VoiceChatHudState
         VoiceChatPluginMain.Logger.LogInfo("[VC] Room settings synced.");
     }
 
-    // ── Button creation ───────────────────────────────────────────────────────
     private static void DestroyButtons()
     {
         if (_micButtonObj != null) { Object.Destroy(_micButtonObj); _micButtonObj = null; }
@@ -198,13 +188,14 @@ public static class VoiceChatHudState
         }
     }
 
-    // ── Mic state machine ─────────────────────────────────────────────────────
     internal static void CycleMicPublic() => CycleMic();
     private static void CycleMic()
     {
+        bool impRadioOn = VoiceChatConfig.SyncedRoomSettings.ImpostorPrivateRadio;
         bool canImpMode = PlayerControl.LocalPlayer != null
             && PlayerControl.LocalPlayer.Data?.Role?.IsImpostor == true
-            && !PlayerControl.LocalPlayer.Data.IsDead;
+            && !PlayerControl.LocalPlayer.Data.IsDead
+            && impRadioOn;
 
         if (!_micMuted && _channel == VoiceChannel.All)
         {
@@ -224,8 +215,24 @@ public static class VoiceChatHudState
     private static void ToggleSpeaker()
     {
         _speakerMuted = !_speakerMuted;
-        VoiceChatRoom.Current?.SetMasterVolume(
-            _speakerMuted ? 0f : VoiceChatConfig.MasterVolume);
+
+        // FIX: Speaker mute bug — when muting, set master volume to 0
+        // AND clear speaker to prevent buffer noise loop. When unmuting,
+        // restore the speaker device.
+        var room = VoiceChatRoom.Current;
+        if (room != null)
+        {
+            if (_speakerMuted)
+            {
+                room.SetMasterVolume(0f);
+            }
+            else
+            {
+                room.SetMasterVolume(VoiceChatConfig.MasterVolume);
+            }
+        }
+
+        VoiceChatPluginMain.Logger.LogInfo("[VC] Speaker: " + (_speakerMuted ? "OFF" : "ON"));
         RefreshButtonVisuals();
     }
 
@@ -255,7 +262,6 @@ public static class VoiceChatHudState
         }
     }
 
-    // ── Tooltip ───────────────────────────────────────────────────────────────
     private static GameObject CreateTooltipObject(Transform root, out TextMeshPro tmp)
     {
         var go = new GameObject("VC_Tooltip");
@@ -325,7 +331,6 @@ public static class VoiceChatHudState
         tooltip.transform.position = new Vector3(p.x - 0.2f, p.y - 0.8f, p.z - 1f);
     }
 
-    // ── Sprite helpers ────────────────────────────────────────────────────────
     private static void ClearButtonBG(GameObject obj)
     {
         foreach (var sr in obj.GetComponentsInChildren<SpriteRenderer>())
@@ -340,7 +345,7 @@ public static class VoiceChatHudState
         go.layer = parent.layer;
         var sr = go.AddComponent<SpriteRenderer>();
         sr.sprite = LoadSprite(resource);
-        sr.sortingOrder = 5;
+        sr.sortingOrder = 500;
     }
 
     private static Sprite CreateSolidSprite(Color c)
@@ -350,7 +355,6 @@ public static class VoiceChatHudState
         return Sprite.Create(tex, new Rect(0, 0, 1, 1), new Vector2(0.5f, 0.5f));
     }
 
-    // ── Sprite cache ──────────────────────────────────────────────────────────
     private static readonly Dictionary<string, Sprite> _spriteCache = new();
 
     public static Sprite LoadSprite(string path)

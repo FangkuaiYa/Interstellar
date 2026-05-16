@@ -37,8 +37,7 @@ namespace VoiceChatPlugin
 		private static BoolOptionNames onlyMeetingOrLobbyBool;
 		private static FloatOptionNames maxDistanceFloat;
 
-		private static RulesCategory voiceChatCategory;
-		private static bool settingsInjected = false;
+		private static RulesCategory voiceChatCategory = null!;
 
 		static Options()
 		{
@@ -185,8 +184,10 @@ namespace VoiceChatPlugin
 		[HarmonyPostfix]
 		static void GameManagerCreatorPatch(GameManagerCreator __instance)
 		{
-			if (settingsInjected) return;
-			settingsInjected = true;
+			dynamic allCategories = __instance.NormalGameManagerPrefab.gameSettingsList.AllCategories;
+			foreach (var cat in allCategories)
+				if (cat is RulesCategory rc && rc.CategoryName == voiceChatCategoryName)
+					return;
 
 			var allSettings = new Il2CppSystem.Collections.Generic.List<BaseGameSetting>();
 
@@ -220,7 +221,6 @@ namespace VoiceChatPlugin
 				CategoryName = voiceChatCategoryName
 			};
 
-			dynamic allCategories = __instance.NormalGameManagerPrefab.gameSettingsList.AllCategories;
 			allCategories.System_Collections_IList_Add(voiceChatCategory);
 		}
 

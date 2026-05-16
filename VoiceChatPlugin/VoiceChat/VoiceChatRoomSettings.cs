@@ -1,12 +1,8 @@
 using Hazel;
 using HarmonyLib;
-using System;
 
 namespace VoiceChatPlugin.VoiceChat;
 
-/// <summary>
-/// Room-level voice rules owned by the host and synced to every client via RPC 201.
-/// </summary>
 public sealed class VoiceChatRoomSettings
 {
     private const byte RpcId = 201;
@@ -99,11 +95,6 @@ public sealed class VoiceChatRoomSettings
         public static void Postfix(byte callId, MessageReader reader)
         {
             if (callId != RpcId) return;
-
-            // FIX #3: Non-host clients must ignore this RPC when they are the host
-            // (the host already applied the setting locally before sending).
-            if (AmongUsClient.Instance != null && AmongUsClient.Instance.AmHost) return;
-
             try
             {
                 var s = VoiceChatConfig.SyncedRoomSettings;
@@ -118,38 +109,11 @@ public sealed class VoiceChatRoomSettings
                 s.CameraCanHear        = reader.ReadBoolean();
                 s.ImpostorPrivateRadio = reader.ReadBoolean();
                 s.OnlyMeetingOrLobby   = reader.ReadBoolean();
-
-                VoiceChatPluginMain.Logger.LogInfo("[VC] RoomSettings RPC received and applied.");
-
-                // FIX #3: Refresh the LobbyViewSettingsPane so non-host players see the
-                // updated values immediately when they open the settings viewer.
-                // ChangeTab re-populates all rows from the current game options values,
-                // which our GetValuePatch will now route to SyncedRoomSettings.
-                RefreshSettingsUI();
+                VoiceChatPluginMain.Logger.LogInfo("[VC] RoomSettings RPC received.");
             }
             catch (Exception ex)
             {
                 VoiceChatPluginMain.Logger.LogError("[VC] RoomSettings RPC parse error: " + ex.Message);
-            }
-        }
-
-        private static void RefreshSettingsUI()
-        {
-            try
-            {
-                var pane = DestroyableSingleton<LobbyViewSettingsPane>.Instance;
-                if (pane != null && pane.gameObject.activeInHierarchy)
-                {
-                    // Re-run the current tab so all displayed values are rebuilt.
-                    // SetTab() re-populates without resetting scroll position.
-                    pane.SetTab();
-                    VoiceChatPluginMain.Logger.LogInfo("[VC] LobbyViewSettingsPane refreshed after settings RPC.");
-                }
-            }
-            catch (Exception ex)
-            {
-                // UI refresh is best-effort; don't let it break the audio logic.
-                VoiceChatPluginMain.Logger.LogWarning("[VC] Settings UI refresh failed: " + ex.Message);
             }
         }
     }
