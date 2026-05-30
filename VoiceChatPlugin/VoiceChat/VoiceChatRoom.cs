@@ -39,7 +39,7 @@ public class VoiceChatRoom
     private float _commsSabCheckTimer;
 
     private AndroidMicrophone? _androidMic;
-    private GameObject? _androidSpeakerGo;
+    private AndroidSpeaker? _androidSpeaker;
     private static readonly bool IsAndroid = Application.platform == RuntimePlatform.Android;
     public static VoiceChatRoom Start(string region, string roomCode)
     {
@@ -223,21 +223,19 @@ public class VoiceChatRoom
     {
         try
         {
-            if (_androidSpeakerGo != null)
-            {
-                UnityEngine.Object.Destroy(_androidSpeakerGo);
-                _androidSpeakerGo = null;
-            }
+            _androidSpeaker?.Dispose();
+            _androidSpeaker = null;
 
-            var (speaker, go) = AndroidSpeakerFactory.Create(48000, 2);
-            _interstellar.Speaker = speaker;
-            _androidSpeakerGo = go;
-            VoiceChatPluginMain.Logger.LogInfo("[VC] Android speaker (Unity AudioSource) initialised.");
+            _androidSpeaker = new AndroidSpeaker();
+            _androidSpeaker.Start();
+            _interstellar.Speaker = _androidSpeaker.Speaker;
+            VoiceChatPluginMain.Logger.LogInfo("[VC] Android speaker (AudioTrack) initialised.");
         }
         catch (Exception ex)
         {
             VoiceChatPluginMain.Logger.LogError($"[VC] Android speaker init failed: {ex.Message}");
-            try { _interstellar.Speaker = null; } catch { }
+            try { _androidSpeaker?.Dispose(); } catch { }
+            _androidSpeaker = null;
         }
     }
 
@@ -245,6 +243,7 @@ public class VoiceChatRoom
     public void Update()
     {
         _androidMic?.Update();
+        _androidSpeaker?.Update();
 
         TryUpdateLocalProfile();
 
@@ -312,11 +311,8 @@ public class VoiceChatRoom
         _androidMic?.Dispose();
         _androidMic = null;
 
-        if (_androidSpeakerGo != null)
-        {
-            UnityEngine.Object.Destroy(_androidSpeakerGo);
-            _androidSpeakerGo = null;
-        }
+        _androidSpeaker?.Dispose();
+        _androidSpeaker = null;
 
         _interstellar.Disconnect();
     }

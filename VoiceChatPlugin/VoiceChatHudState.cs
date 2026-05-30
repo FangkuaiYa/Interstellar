@@ -272,7 +272,7 @@ public static class VoiceChatHudState
         bg.transform.SetParent(go.transform, false);
         var bgSr = bg.AddComponent<SpriteRenderer>();
         bgSr.sprite = CreateSolidSprite(new Color(0f, 0f, 0f, 0.82f));
-        bgSr.sortingOrder = 20;
+        bgSr.sortingOrder = 32766;
         bg.transform.localScale = new Vector3(2.6f, 1.6f, 1f);
 
         var textGo = new GameObject("Text");
@@ -281,7 +281,7 @@ public static class VoiceChatHudState
         tmp = textGo.AddComponent<TextMeshPro>();
         tmp.fontSize = 1.5f; tmp.color = Color.white;
         tmp.alignment = TextAlignmentOptions.Center;
-        tmp.enableWordWrapping = false; tmp.sortingOrder = 21;
+        tmp.enableWordWrapping = false; tmp.sortingOrder = 32767;
         tmp.rectTransform.sizeDelta = new Vector2(2.4f, 1.4f);
         go.SetActive(false);
         return go;
@@ -334,18 +334,21 @@ public static class VoiceChatHudState
     private static void ClearButtonBG(GameObject obj)
     {
         foreach (var sr in obj.GetComponentsInChildren<SpriteRenderer>())
+        {
             sr.color = Color.clear;
+            sr.sortingOrder = 32766;
+        }
     }
 
     private static void CreateIconChild(GameObject parent, string resource)
     {
         var go = new GameObject("VCIcon");
         go.transform.SetParent(parent.transform, false);
-        go.transform.localPosition = Vector3.zero;
+        go.transform.localPosition = new Vector3(0f, 0f, -1f);
         go.layer = parent.layer;
         var sr = go.AddComponent<SpriteRenderer>();
         sr.sprite = LoadSprite(resource);
-        sr.sortingOrder = 500;
+        sr.sortingOrder = 32767;
     }
 
     private static Sprite CreateSolidSprite(Color c)
