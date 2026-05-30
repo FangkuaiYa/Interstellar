@@ -155,6 +155,7 @@ VoiceChatPlugin/
 
 ## 贡献者
 
+- [AOU团队](https://github.com/All-Of-Us-Mods) — 提供了安卓适配所需的API接口
 - [Interstellar](https://github.com/Dolly1016/Interstellar) — Dolly 开发的语音聊天服务端框架
 - [Nebula on the Ship](https://github.com/Dolly1016/Nebula) — Dolly 开发的 Nebula 插件，语音聊天功能架构参考
 - [ThreeXThreeTeam](https://github.com/ThreeXThreeTeam) — TAIKongguo 创建的开发团队，提供中国大陆 Among Us 服务器支持
@@ -163,7 +164,7 @@ VoiceChatPlugin/
 
 ## 测试者
 
-Elinmei、TAIKongguo、Farewell……
+TAIKongguo、Farewell……
 
 ## 许可证
 

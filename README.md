@@ -113,6 +113,7 @@ Place `bin/Release/net6.0/VoiceChatPlugin.dll` into your `BepInEx/plugins/` fold
 
 ## Contributors
 
+- [AOU Team](https://github.com/All-Of-Us-Mods) — Starlight(Android) Audio Api Provider
 - [Interstellar](https://github.com/Dolly1016/Interstellar) — Voice chat server framework by Dolly
 - [Nebula on the Ship](https://github.com/Dolly1016/Nebula) — Plugin architecture reference by Dolly
 - [ThreeXThreeTeam](https://github.com/ThreeXThreeTeam) — Among Us server support for mainland China by TAIKongguo
@@ -121,7 +122,7 @@ Place `bin/Release/net6.0/VoiceChatPlugin.dll` into your `BepInEx/plugins/` fold
 
 ## Testers
 
-Elinmei, TAIKongguo, Farewell……
+TAIKongguo, Farewell……
 
 ## License
 
