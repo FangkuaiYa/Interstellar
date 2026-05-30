@@ -57,7 +57,7 @@ public static class MeetingSpeakingIndicatorPatch
                 if (!OriginalGlowColors.ContainsKey(state.TargetPlayerId))
                     OriginalGlowColors[state.TargetPlayerId] = state.HighlightedFX.color;
 
-                state.HighlightedFX.color   = glowColor;
+                state.HighlightedFX.color = glowColor;
                 state.HighlightedFX.enabled = true;
             }
             else

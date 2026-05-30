@@ -4,10 +4,10 @@ namespace VoiceChatPlugin.VoiceChat;
 
 public interface IVoiceComponent
 {
-    float   Radious  { get; }
-    float   Volume   { get; }
+    float Radious { get; }
+    float Volume { get; }
     Vector2 Position { get; }
-    bool    CanPlaySoundFrom(IVoiceComponent mic);
+    bool CanPlaySoundFrom(IVoiceComponent mic);
 
     float CanCatch(object player, Vector2 position)
     {

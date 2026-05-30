@@ -13,7 +13,7 @@ internal static class LanguageChangedPatch
         {
             LocalizationManager.OnLanguageChanged(__instance.currentLanguage.languageID);
             Options.InitializeLocalization();
-		}
+        }
     }
 
     [HarmonyPatch(typeof(TranslationController), nameof(TranslationController.SetLanguage))]

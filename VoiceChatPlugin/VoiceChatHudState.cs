@@ -18,10 +18,10 @@ public enum VoiceChannel
 
 public static class VoiceChatHudState
 {
-    private static PassiveButton?  _micButton;
-    private static GameObject?     _micButtonObj;
-    private static PassiveButton?  _spkButton;
-    private static GameObject?     _spkButtonObj;
+    private static PassiveButton? _micButton;
+    private static GameObject? _micButtonObj;
+    private static PassiveButton? _spkButton;
+    private static GameObject? _spkButtonObj;
     private static AspectPosition? _micAspect;
     private static AspectPosition? _spkAspect;
 
@@ -30,16 +30,16 @@ public static class VoiceChatHudState
     private static readonly Vector3 MicEdge = new(3.85f, 0.55f, -10f);
     private static readonly Vector3 SpkEdge = new(4.50f, 0.55f, -10f);
 
-    private static GameObject?  _micTooltip;
-    private static GameObject?  _spkTooltip;
+    private static GameObject? _micTooltip;
+    private static GameObject? _spkTooltip;
     private static TextMeshPro? _micTooltipTmp;
     private static TextMeshPro? _spkTooltipTmp;
 
-    private static bool         _micMuted;
-    private static bool         _speakerMuted;
+    private static bool _micMuted;
+    private static bool _speakerMuted;
     private static VoiceChannel _channel = VoiceChannel.All;
 
-    public static bool IsSpeakerMuted      => _speakerMuted;
+    public static bool IsSpeakerMuted => _speakerMuted;
     public static bool IsImpostorRadioOnly => _channel == VoiceChannel.Impostor;
 
     private static VoiceChatRoomSettings? _lastSentSettings;
@@ -125,7 +125,7 @@ public static class VoiceChatHudState
 
         if (_micButtonObj == null)
         {
-            _micButtonObj      = Object.Instantiate(hud.MapButton.gameObject, hud.transform.parent);
+            _micButtonObj = Object.Instantiate(hud.MapButton.gameObject, hud.transform.parent);
             _micButtonObj.name = "VC_MicButton";
             ClearButtonBG(_micButtonObj);
             CreateIconChild(_micButtonObj, "VoiceChatPlugin.Resources.MicOn.png");
@@ -140,13 +140,13 @@ public static class VoiceChatHudState
 
             _micAspect = _micButtonObj.GetComponent<AspectPosition>()
                 ?? _micButtonObj.AddComponent<AspectPosition>();
-            _micAspect.Alignment        = ButtonAnchor;
+            _micAspect.Alignment = ButtonAnchor;
             _micAspect.DistanceFromEdge = MicEdge;
         }
 
         if (_spkButtonObj == null)
         {
-            _spkButtonObj      = Object.Instantiate(hud.MapButton.gameObject, hud.transform.parent);
+            _spkButtonObj = Object.Instantiate(hud.MapButton.gameObject, hud.transform.parent);
             _spkButtonObj.name = "VC_SpkButton";
             ClearButtonBG(_spkButtonObj);
             CreateIconChild(_spkButtonObj, "VoiceChatPlugin.Resources.SpeakerOn.png");
@@ -161,7 +161,7 @@ public static class VoiceChatHudState
 
             _spkAspect = _spkButtonObj.GetComponent<AspectPosition>()
                 ?? _spkButtonObj.AddComponent<AspectPosition>();
-            _spkAspect.Alignment        = ButtonAnchor;
+            _spkAspect.Alignment = ButtonAnchor;
             _spkAspect.DistanceFromEdge = SpkEdge;
         }
     }
@@ -199,8 +199,8 @@ public static class VoiceChatHudState
 
         if (!_micMuted && _channel == VoiceChannel.All)
         {
-            if (canImpMode) _channel  = VoiceChannel.Impostor;
-            else            _micMuted = true;
+            if (canImpMode) _channel = VoiceChannel.Impostor;
+            else _micMuted = true;
         }
         else if (_channel == VoiceChannel.Impostor)
         { _channel = VoiceChannel.All; _micMuted = true; }
@@ -257,7 +257,7 @@ public static class VoiceChatHudState
             if (sr != null)
             {
                 sr.sprite = _speakerMuted ? Sprites.SpkOff : Sprites.SpkOn;
-                sr.color  = _speakerMuted ? new Color(1f, 0.4f, 0.4f) : Color.white;
+                sr.color = _speakerMuted ? new Color(1f, 0.4f, 0.4f) : Color.white;
             }
         }
     }
@@ -297,7 +297,7 @@ public static class VoiceChatHudState
             : VoiceChatLocalization.Tr("micStatusOn"));
         _micTooltipTmp.text =
             "<b>" + VoiceChatLocalization.Tr("tooltipMicTitle") + "</b>\n" +
-            string.Format(VoiceChatLocalization.Tr("tooltipMicStatus"),  st) + "\n" +
+            string.Format(VoiceChatLocalization.Tr("tooltipMicStatus"), st) + "\n" +
             string.Format(VoiceChatLocalization.Tr("tooltipMicChannel"), ch) + "\n" +
             string.Format(VoiceChatLocalization.Tr("tooltipMicVolume"), (int)(VoiceChatConfig.MicVolume * 100f)) + "\n" +
             string.Format(VoiceChatLocalization.Tr("tooltipMicHotkey"), "M");
@@ -363,7 +363,7 @@ public static class VoiceChatHudState
         try
         {
             var tex = new Texture2D(0, 0, TextureFormat.RGBA32, false)
-                { wrapMode = TextureWrapMode.Clamp };
+            { wrapMode = TextureWrapMode.Clamp };
             var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(path)!;
             using var ms = new MemoryStream();
             stream.CopyTo(ms);
@@ -383,9 +383,9 @@ public static class VoiceChatHudState
 
     private static class Sprites
     {
-        public static Sprite MicOn  => VoiceChatHudState.LoadSprite("VoiceChatPlugin.Resources.MicOn.png");
+        public static Sprite MicOn => VoiceChatHudState.LoadSprite("VoiceChatPlugin.Resources.MicOn.png");
         public static Sprite MicOff => VoiceChatHudState.LoadSprite("VoiceChatPlugin.Resources.MicOff.png");
-        public static Sprite SpkOn  => VoiceChatHudState.LoadSprite("VoiceChatPlugin.Resources.SpeakerOn.png");
+        public static Sprite SpkOn => VoiceChatHudState.LoadSprite("VoiceChatPlugin.Resources.SpeakerOn.png");
         public static Sprite SpkOff => VoiceChatHudState.LoadSprite("VoiceChatPlugin.Resources.SpeakerOff.png");
     }
 }

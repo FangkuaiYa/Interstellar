@@ -59,7 +59,7 @@ public static class VoiceChatLocalization
         {
             SChinese => "zh-Hans.json",
             TChinese => "zh-Hant.json",
-            _        => "en.json"
+            _ => "en.json"
         };
 
         var loaded = LoadFromResource(fileName);

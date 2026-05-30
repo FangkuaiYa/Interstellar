@@ -13,7 +13,7 @@ public static class PingTrackerPatch
 {
     private const float SpeakingThreshold = 0.01f;
 
-    private static GameObject?    _barRoot;
+    private static GameObject? _barRoot;
     private static AspectPosition? _barAspect;
 
     private static readonly Dictionary<byte, SpeakerSlot> _slots = new();
@@ -68,11 +68,11 @@ public static class PingTrackerPatch
     {
         if (_barRoot != null && _barRoot) return;
 
-        _barRoot      = new GameObject("VC_SpeakingBar");
+        _barRoot = new GameObject("VC_SpeakingBar");
         _barRoot.transform.SetParent(template.transform.parent, false);
 
-        _barAspect    = _barRoot.AddComponent<AspectPosition>();
-        _barAspect.Alignment        = AspectPosition.EdgeAlignments.Top;
+        _barAspect = _barRoot.AddComponent<AspectPosition>();
+        _barAspect.Alignment = AspectPosition.EdgeAlignments.Top;
         _barAspect.DistanceFromEdge = new Vector3(0f, 0.8f, 0f);
         _barAspect.AdjustPosition();
 
@@ -114,8 +114,8 @@ public static class PingTrackerPatch
             var circleGO = new GameObject("Circle");
             circleGO.transform.SetParent(_barRoot.transform, false);
             var sr = circleGO.AddComponent<SpriteRenderer>();
-            sr.sprite       = CreateCircleSprite();
-            sr.color        = playerColor;
+            sr.sprite = CreateCircleSprite();
+            sr.color = playerColor;
             sr.sortingOrder = 10;
             circleGO.transform.localScale = Vector3.one * 0.28f;
             slot.IconGO = circleGO;
@@ -125,12 +125,12 @@ public static class PingTrackerPatch
         var labelGO = new GameObject("Label");
         labelGO.transform.SetParent(_barRoot.transform, false);
         var tmp = labelGO.AddComponent<TextMeshPro>();
-        tmp.text               = name;
-        tmp.fontSize           = 1.3f;
-        tmp.alignment          = TextAlignmentOptions.Center;
+        tmp.text = name;
+        tmp.fontSize = 1.3f;
+        tmp.alignment = TextAlignmentOptions.Center;
         tmp.enableWordWrapping = false;
-        tmp.sortingOrder       = 11;
-        tmp.color              = Color.white;
+        tmp.sortingOrder = 11;
+        tmp.color = Color.white;
         tmp.rectTransform.sizeDelta = new Vector2(1.8f, 0.6f);
         slot.LabelTMP = tmp;
 
@@ -141,7 +141,7 @@ public static class PingTrackerPatch
     {
         if (_slots.TryGetValue(id, out var slot))
         {
-            if (slot.IconGO  != null) Object.Destroy(slot.IconGO);
+            if (slot.IconGO != null) Object.Destroy(slot.IconGO);
             if (slot.LabelTMP != null) Object.Destroy(slot.LabelTMP.gameObject);
             _slots.Remove(id);
         }
@@ -158,7 +158,7 @@ public static class PingTrackerPatch
         {
             float x = startX + i * slotWidth;
             if (kv.Value.IconGO != null)
-                kv.Value.IconGO.transform.localPosition  = new Vector3(x, 0f, 0f);
+                kv.Value.IconGO.transform.localPosition = new Vector3(x, 0f, 0f);
             if (kv.Value.LabelTMP != null)
                 kv.Value.LabelTMP.transform.localPosition = new Vector3(x, -0.32f, 0f);
             i++;
@@ -172,7 +172,7 @@ public static class PingTrackerPatch
         {
             foreach (var kv in _slots)
             {
-                if (kv.Value.IconGO   != null) Object.Destroy(kv.Value.IconGO);
+                if (kv.Value.IconGO != null) Object.Destroy(kv.Value.IconGO);
                 if (kv.Value.LabelTMP != null) Object.Destroy(kv.Value.LabelTMP.gameObject);
             }
             _slots.Clear();
@@ -206,13 +206,13 @@ public static class PingTrackerPatch
         var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
         float r = size * 0.5f;
         for (int y = 0; y < size; y++)
-        for (int x = 0; x < size; x++)
-        {
-            float dx = x - r + 0.5f, dy = y - r + 0.5f;
-            float dist = Mathf.Sqrt(dx * dx + dy * dy);
-            float alpha = Mathf.Clamp01((r - dist) * 2f);
-            tex.SetPixel(x, y, new Color(1, 1, 1, alpha));
-        }
+            for (int x = 0; x < size; x++)
+            {
+                float dx = x - r + 0.5f, dy = y - r + 0.5f;
+                float dist = Mathf.Sqrt(dx * dx + dy * dy);
+                float alpha = Mathf.Clamp01((r - dist) * 2f);
+                tex.SetPixel(x, y, new Color(1, 1, 1, alpha));
+            }
         tex.Apply();
         _circleSprite = Sprite.Create(
             tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), size);
@@ -221,7 +221,7 @@ public static class PingTrackerPatch
 
     private class SpeakerSlot
     {
-        public GameObject?   IconGO;
-        public TextMeshPro?  LabelTMP;
+        public GameObject? IconGO;
+        public TextMeshPro? LabelTMP;
     }
 }

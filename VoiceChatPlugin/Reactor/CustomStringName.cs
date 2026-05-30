@@ -14,7 +14,7 @@ public static class CustomStringName
     public static StringNames Create()
     {
         var id = _lastId++;
-        return (StringNames) id;
+        return (StringNames)id;
     }
 
     /// <summary>
