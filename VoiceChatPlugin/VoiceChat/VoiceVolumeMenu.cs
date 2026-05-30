@@ -12,200 +12,288 @@ namespace VoiceChatPlugin.VoiceChat;
 [HarmonyPatch]
 public static class VoiceVolumeMenu
 {
-    private static GameObject? _window;
+    private static GameObject? _popUp;
     private static ToggleButtonBehaviour? _btnPrefab;
+    private static TextMeshPro? _titleTmp;
     private static float _scrollOffset;
 
-    private const float WindowW = 5.6f;
-    private const float WindowH = 4.6f;
-    private const float RowH = 0.68f;
+    private const float RowH = 0.72f;
     private const float SliderW = 1.80f;
-    private const float IconScale = 0.38f;
     private const float VMin = 0f;
     private const float VMax = 2f;
 
+    // ── Prefab setup ────────────────────────────────────────────────────
+
+    [HarmonyPatch(typeof(MainMenuManager), nameof(MainMenuManager.Start))]
+    [HarmonyPostfix]
+    static void MainMenuManager_Start()
+    {
+        if (!_titleTmp)
+        {
+            var go = new GameObject("VCVolTitle");
+            var tmp = go.AddComponent<TextMeshPro>();
+            tmp.fontSize = 4;
+            tmp.alignment = TextAlignmentOptions.Center;
+            tmp.transform.localPosition += Vector3.left * 0.2f;
+            _titleTmp = Object.Instantiate(tmp);
+            _titleTmp.gameObject.SetActive(false);
+            Object.DontDestroyOnLoad(_titleTmp);
+        }
+
+        if (_popUp) { Object.Destroy(_popUp); _popUp = null; }
+        _scrollOffset = 0f;
+    }
+
+    [HarmonyPatch(typeof(OptionsMenuBehaviour), nameof(OptionsMenuBehaviour.Start))]
+    [HarmonyPostfix]
+    static void OptionsMenu_Start(OptionsMenuBehaviour __instance)
+    {
+        if (!__instance.CensorChatButton) return;
+        if (!_btnPrefab)
+        {
+            _btnPrefab = Object.Instantiate(__instance.CensorChatButton);
+            Object.DontDestroyOnLoad(_btnPrefab);
+            _btnPrefab.name = "VCVol_BtnPrefab";
+            _btnPrefab.gameObject.SetActive(false);
+        }
+    }
+
+    // ── Toggle / lifecycle ──────────────────────────────────────────────
+
     public static void Toggle()
     {
-        if (!_window)
+        if (!_popUp) Build();
+        if (!_popUp || !_btnPrefab) return;
+
+        if (_popUp.activeSelf) { _popUp.SetActive(false); return; }
+
+        if (HudManager.Instance)
         {
-            _window = null; // clear dead ref
-            Build();
+            _popUp.transform.SetParent(HudManager.Instance.transform);
+            _popUp.transform.localPosition = new Vector3(0f, 0f, -860f);
         }
         else
         {
-            bool next = !_window.activeSelf;
-            _window.SetActive(next);
-            if (next) Refresh();
+            _popUp.transform.SetParent(null);
+            Object.DontDestroyOnLoad(_popUp);
         }
+
+        CheckSetTitle();
+        RefreshRows();
+        _popUp.SetActive(true);
     }
 
     public static void Close()
     {
-        if (_window) _window.SetActive(false);
+        if (_popUp) _popUp.SetActive(false);
     }
+
+    // ── Build popup shell (clone OptionsMenuBehaviour) ───────────────────
 
     private static void Build()
     {
-        if (!HudManager.Instance) return;
-
-        _btnPrefab ??= FindButtonPrefab();
         if (!_btnPrefab) return;
+        var src = Object.FindObjectOfType<OptionsMenuBehaviour>();
+        if (!src) return;
 
-        _window = new GameObject("VC_VolumeMenu");
-        _window.transform.SetParent(HudManager.Instance.transform, false);
-        _window.transform.localPosition = new Vector3(0f, 0f, -870f);
+        _popUp = Object.Instantiate(src.gameObject);
+        Object.DontDestroyOnLoad(_popUp);
+        var t = _popUp.transform;
+        var p = t.localPosition; p.z = -860f; t.localPosition = p;
+        Object.Destroy(_popUp.GetComponent<OptionsMenuBehaviour>());
 
-        var bgGO = new GameObject("BG");
-        bgGO.transform.SetParent(_window.transform, false);
-        var bgSr = bgGO.AddComponent<SpriteRenderer>();
-        bgSr.sprite = Create1x1Sprite(new Color32(10, 13, 22, 240));
-        bgSr.drawMode = SpriteDrawMode.Sliced;
-        bgSr.size = new Vector2(WindowW, WindowH);
-        bgSr.sortingOrder = 32766;
+        for (int i = t.childCount - 1; i >= 0; i--)
+        {
+            var ch = t.GetChild(i).gameObject;
+            if (ch.name is not ("Background" or "CloseButton"))
+                Object.Destroy(ch);
+        }
 
-        var titleGO = new GameObject("Title");
-        titleGO.transform.SetParent(_window.transform, false);
-        titleGO.transform.localPosition = new Vector3(0f, WindowH * 0.5f - 0.35f, -0.1f);
-        var titleTmp = titleGO.AddComponent<TextMeshPro>();
-        titleTmp.text = "<b>" + VoiceChatLocalization.Tr("playerVolumes") + "</b>";
-        titleTmp.fontSize = 1.8f;
-        titleTmp.alignment = TextAlignmentOptions.Center;
-        titleTmp.sortingOrder = 32767;
-        titleTmp.color = new Color32(175, 215, 255, 255);
-        titleTmp.rectTransform.sizeDelta = new Vector2(WindowW - 0.4f, 0.5f);
+        var bg = t.Find("Background")?.GetComponent<SpriteRenderer>();
+        if (bg) { bg.color = new Color32(12, 14, 22, 242); bg.sortingOrder = 32766; }
 
-        CreateSmallTextButton("✕", new Vector3(WindowW * 0.5f - 0.3f, WindowH * 0.5f - 0.28f, -0.2f),
-            () => { if (_window) _window.SetActive(false); });
+        var close = _popUp.GetComponentInChildren<PassiveButton>();
+        if (close)
+        {
+            close.OnClick = new ButtonClickedEvent();
+            close.OnClick.AddListener((Action)(() => _popUp!.SetActive(false)));
+        }
 
-        CreateSmallTextButton("▲", new Vector3(WindowW * 0.5f - 0.28f, 0.5f, -0.2f),
-            () => { _scrollOffset = Mathf.Max(0f, _scrollOffset - RowH); Refresh(); });
-        CreateSmallTextButton("▼", new Vector3(WindowW * 0.5f - 0.28f, -0.5f, -0.2f),
-            () => { _scrollOffset += RowH; Refresh(); });
+        // Scroll arrows
+        SmallBtn("▲", new Vector3(2.5f, 2.1f, -0.5f), () => { _scrollOffset = Mathf.Max(0f, _scrollOffset - RowH); RefreshRows(); });
+        SmallBtn("▼", new Vector3(2.5f, -2.3f, -0.5f), () => { _scrollOffset += RowH; RefreshRows(); });
 
-        var contentGO = new GameObject("Content");
-        contentGO.transform.SetParent(_window.transform, false);
-        contentGO.transform.localPosition = new Vector3(0f, WindowH * 0.5f - 0.8f, -0.1f);
-
-        var maskGO = new GameObject("Mask");
-        maskGO.transform.SetParent(_window.transform, false);
-        maskGO.transform.localPosition = new Vector3(0f, 0f, -0.05f);
-        var mask = maskGO.AddComponent<SpriteMask>();
-        mask.sprite = Create1x1Sprite(Color.white);
-        maskGO.transform.localScale = new Vector3(WindowW - 0.2f, WindowH - 1.0f, 1f);
-
-        _window.SetActive(true);
-        Refresh();
+        _popUp.SetActive(false);
     }
 
-    private static void Refresh()
+    private static void CheckSetTitle()
     {
-        if (!_window) return;
+        if (!_popUp || !_titleTmp || _popUp.transform.Find("VCVolTitle")) return;
+        var t = Object.Instantiate(_titleTmp, _popUp.transform);
+        t.GetComponent<RectTransform>().localPosition = Vector3.up * 2.3f;
+        t.gameObject.SetActive(true);
+        t.text = VoiceChatLocalization.Tr("playerVolumes");
+        t.name = "VCVolTitle";
+        t.sortingOrder = 32767;
+    }
 
-        var content = _window.transform.Find("Content");
-        if (!content) return;
+    // ── Refresh rows ─────────────────────────────────────────────────────
+
+    private static void RefreshRows()
+    {
+        if (!_popUp || !_btnPrefab) return;
+        var content = _popUp.transform;
+
+        // Destroy old rows (keep shell: Background, CloseButton, VCVolTitle, arrow buttons)
+        for (int i = content.childCount - 1; i >= 0; i--)
+        {
+            var n = content.GetChild(i).name;
+            if (n is "Background" or "CloseButton" or "VCVolTitle" || n.StartsWith("Btn_")) continue;
+            Object.Destroy(content.GetChild(i).gameObject);
+        }
 
         var players = CollectPlayers();
 
-        const float visibleH = WindowH - 1.0f;
+        const float visibleH = 3.8f;
         int maxRows = Mathf.FloorToInt(visibleH / RowH);
+        if (maxRows < 1) maxRows = 5;
         int startIdx = Mathf.FloorToInt(_scrollOffset / RowH);
         startIdx = Mathf.Clamp(startIdx, 0, Mathf.Max(0, players.Count - maxRows));
         _scrollOffset = startIdx * RowH;
 
-        // Pool: destroy excess rows, keep existing ones, create new if needed
-        int needed = Math.Min(players.Count - startIdx, maxRows);
-        if (needed < 0) needed = 0;
-
-        while (content.childCount > needed)
-            Object.Destroy(content.GetChild(content.childCount - 1).gameObject);
-
-        for (int i = 0; i < needed; i++)
+        float y = 1.6f;
+        for (int i = startIdx; i < players.Count && i < startIdx + maxRows; i++)
         {
-            var player = players[startIdx + i];
-            Transform row;
-            if (i < content.childCount)
-                row = content.GetChild(i);
-            else
-                row = CreateRow(content, i).transform;
-            UpdateRow(row, player, i);
+            BuildRow(content, players[i], y);
+            y -= RowH;
         }
 
-        if (players.Count == 0 && content.childCount == 0)
+        if (players.Count == 0)
         {
-            var hint = new GameObject("NoPlayers");
-            hint.transform.SetParent(content, false);
-            hint.transform.localPosition = new Vector3(0f, -0.2f, 0f);
-            var tmp = hint.AddComponent<TextMeshPro>();
-            tmp.text = VoiceChatLocalization.Tr("noPlayersInRoom");
-            tmp.fontSize = 1.4f; tmp.alignment = TextAlignmentOptions.Center;
-            tmp.sortingOrder = 32767;
-            tmp.color = new Color32(140, 160, 200, 200);
-            tmp.rectTransform.sizeDelta = new Vector2(WindowW - 0.6f, 0.6f);
+            var btn = Object.Instantiate(_btnPrefab!, content);
+            btn.transform.localPosition = new Vector3(0f, 0f, -0.5f);
+            btn.transform.localScale = new Vector3(0.9f, 0.8f, 1f);
+            btn.Text.text = VoiceChatLocalization.Tr("noPlayersInRoom");
+            btn.Text.fontSizeMin = btn.Text.fontSizeMax = 1.5f;
+            btn.Text.color = new Color32(140, 160, 200, 200);
+            btn.Background.color = Color.clear;
+            btn.onState = false;
+            btn.gameObject.SetActive(true);
+            foreach (var sr in btn.GetComponentsInChildren<SpriteRenderer>())
+                sr.size = new Vector2(3f, 0.5f);
+            var pb = btn.GetComponent<PassiveButton>();
+            pb.OnClick = new ButtonClickedEvent();
         }
     }
 
-    private static GameObject CreateRow(Transform parent, int index)
+    // ── One player row ───────────────────────────────────────────────────
+
+    private static void BuildRow(Transform parent, PlayerEntry entry, float y)
     {
-        var rowGO = new GameObject($"Row_{index}");
+        var rowGO = new GameObject($"Row_{entry.PlayerId}");
         rowGO.transform.SetParent(parent, false);
+        rowGO.transform.localPosition = new Vector3(0f, y, 0f);
 
-        // Icon placeholder (filled by UpdateRow)
-        var circleGO = new GameObject("Icon");
-        circleGO.transform.SetParent(rowGO.transform, false);
-        circleGO.transform.localPosition = new Vector3(-2.4f, 0.08f, -0.1f);
-        circleGO.transform.localScale = Vector3.one * (IconScale * 0.6f);
-        var sr = circleGO.AddComponent<SpriteRenderer>();
-        sr.sprite = GetCircleSprite();
-        sr.sortingOrder = 32767;
-        sr.maskInteraction = SpriteMaskInteraction.VisibleInsideMask;
-        rowGO.name = "Row"; // placeholder until UpdateRow renames
+        // Name button (using TOR button prefab)
+        var nameBtn = Object.Instantiate(_btnPrefab!, rowGO.transform);
+        nameBtn.transform.localPosition = new Vector3(-1.85f, 0f, -0.1f);
+        nameBtn.transform.localScale = new Vector3(0.7f, 0.8f, 1f);
+        nameBtn.Text.text = entry.Name.Length > 12 ? entry.Name[..10] + "…" : entry.Name;
+        nameBtn.Text.fontSizeMin = nameBtn.Text.fontSizeMax = 1.3f;
+        nameBtn.Text.alignment = TextAlignmentOptions.Left;
+        nameBtn.Text.color = Color.white;
+        nameBtn.Background.color = Color.clear;
+        nameBtn.onState = false;
+        nameBtn.gameObject.SetActive(true);
+        foreach (var sr in nameBtn.GetComponentsInChildren<SpriteRenderer>())
+            sr.size = new Vector2(1.6f, 0.45f);
+        var namePb = nameBtn.GetComponent<PassiveButton>();
+        namePb.OnClick = new ButtonClickedEvent();
 
-        // Name label
-        var nameGO = new GameObject("Name");
-        nameGO.transform.SetParent(rowGO.transform, false);
-        nameGO.transform.localPosition = new Vector3(-1.50f, 0f, -0.1f);
-        var nameTmp = nameGO.AddComponent<TextMeshPro>();
-        nameTmp.fontSize = 1.25f; nameTmp.alignment = TextAlignmentOptions.Left;
-        nameTmp.sortingOrder = 32767; nameTmp.color = Color.white;
-        nameTmp.enableWordWrapping = false;
-        nameTmp.rectTransform.sizeDelta = new Vector2(1.5f, 0.4f);
+        // Volume label button
+        var volBtn = Object.Instantiate(_btnPrefab!, rowGO.transform);
+        volBtn.transform.localPosition = new Vector3(2.2f, 0f, -0.1f);
+        volBtn.transform.localScale = new Vector3(0.4f, 0.8f, 1f);
+        volBtn.Background.color = Color.clear;
+        volBtn.onState = false;
+        volBtn.gameObject.SetActive(true);
+        foreach (var sr in volBtn.GetComponentsInChildren<SpriteRenderer>())
+            sr.size = new Vector2(0.7f, 0.45f);
+        var volPb = volBtn.GetComponent<PassiveButton>();
+        volPb.OnClick = new ButtonClickedEvent();
 
-        // Volume label
-        var volGO = new GameObject("VolLabel");
-        volGO.transform.SetParent(rowGO.transform, false);
-        volGO.transform.localPosition = new Vector3(1.75f, 0f, -0.1f);
-        var volTmp = volGO.AddComponent<TextMeshPro>();
-        volTmp.sortingOrder = 32767; volTmp.fontSize = 1.2f;
-        volTmp.alignment = TextAlignmentOptions.Left; volTmp.color = Color.white;
-        volTmp.enableWordWrapping = false;
-        volTmp.rectTransform.sizeDelta = new Vector2(0.7f, 0.4f);
-
-        // Slider track
+        // Slider track (custom, TOR doesn't have sliders)
         var trackGO = new GameObject("Track");
         trackGO.transform.SetParent(rowGO.transform, false);
-        trackGO.transform.localPosition = new Vector3(0.35f, 0f, -0.1f);
+        trackGO.transform.localPosition = new Vector3(0.3f, 0f, -0.1f);
         var trackSr = trackGO.AddComponent<SpriteRenderer>();
         trackSr.sprite = Create1x1Sprite(new Color32(55, 65, 100, 200));
-        trackSr.drawMode = SpriteDrawMode.Sliced; trackSr.size = new Vector2(SliderW, 0.10f);
+        trackSr.drawMode = SpriteDrawMode.Sliced;
+        trackSr.size = new Vector2(SliderW, 0.10f);
         trackSr.sortingOrder = 32766;
-        trackSr.maskInteraction = SpriteMaskInteraction.VisibleInsideMask;
 
-        // Fill
         var fillGO = new GameObject("Fill");
         fillGO.transform.SetParent(trackGO.transform, false);
         var fillSr = fillGO.AddComponent<SpriteRenderer>();
         fillSr.sprite = Create1x1Sprite(new Color32(80, 160, 235, 220));
-        fillSr.drawMode = SpriteDrawMode.Sliced; fillSr.sortingOrder = 32767;
-        fillSr.maskInteraction = SpriteMaskInteraction.VisibleInsideMask;
+        fillSr.drawMode = SpriteDrawMode.Sliced;
+        fillSr.sortingOrder = 32767;
 
-        // Knob
         var knobGO = new GameObject("Knob");
         knobGO.transform.SetParent(trackGO.transform, false);
         var knobSr = knobGO.AddComponent<SpriteRenderer>();
-        knobSr.sprite = GetCircleSprite(); knobSr.color = Color.white;
+        knobSr.sprite = CreateCircleSprite();
+        knobSr.color = Color.white;
         knobSr.sortingOrder = 32767;
-        knobSr.maskInteraction = SpriteMaskInteraction.VisibleInsideMask;
         knobGO.transform.localScale = Vector3.one * 0.16f;
+
+        var col = trackGO.AddComponent<BoxCollider2D>();
+        col.size = new Vector2(SliderW, 0.40f);
+        var pb = trackGO.AddComponent<PassiveButton>();
+        pb.OnClick = new ButtonClickedEvent();
+        pb.OnMouseOut = new UnityEvent();
+        pb.OnMouseOver = new UnityEvent();
+
+        float currentVol = GetVolume(entry);
+        void SetVolLabel(float v)
+        {
+            volBtn.Text.text = $"<color=#ffdd88>{Mathf.RoundToInt(v * 100f)}%</color>";
+            volBtn.Text.fontSizeMin = volBtn.Text.fontSizeMax = 1.1f;
+            volBtn.Text.alignment = TextAlignmentOptions.Center;
+        }
+
+        void PositionSlider(float v)
+        {
+            float t = Mathf.InverseLerp(VMin, VMax, v);
+            knobGO.transform.localPosition = new Vector3((t - 0.5f) * SliderW, 0f, -0.12f);
+            fillSr.size = new Vector2(t * SliderW, 0.10f);
+            fillGO.transform.localPosition = new Vector3((t * SliderW - SliderW) * 0.5f, 0f, -0.11f);
+        }
+
+        SetVolLabel(currentVol);
+        PositionSlider(currentVol);
+
+        pb.OnClick.AddListener((Action)(() =>
+        {
+            var cam = Camera.main;
+            if (!cam) return;
+            var mWorld = cam.ScreenToWorldPoint(Input.mousePosition);
+            var mLocal = trackGO.transform.InverseTransformPoint(mWorld);
+            float t = Mathf.InverseLerp(-SliderW * 0.5f, SliderW * 0.5f, mLocal.x);
+            float v = Mathf.Clamp((float)Math.Round(Mathf.Lerp(VMin, VMax, t), 2), VMin, VMax);
+            ApplyVolume(entry, v);
+            PositionSlider(v);
+            SetVolLabel(v);
+        }));
+
+        var upd = trackGO.AddComponent<PlayerSliderDragUpdater>();
+        upd.Init(trackGO, SliderW, VMin, VMax, v =>
+        {
+            v = Mathf.Clamp((float)Math.Round(v, 2), VMin, VMax);
+            ApplyVolume(entry, v);
+            PositionSlider(v);
+            SetVolLabel(v);
+        }, () => GetVolume(entry));
 
         // Divider
         var divGO = new GameObject("Div");
@@ -214,112 +302,30 @@ public static class VoiceVolumeMenu
         var divSr = divGO.AddComponent<SpriteRenderer>();
         divSr.sprite = Create1x1Sprite(new Color32(50, 60, 90, 120));
         divSr.drawMode = SpriteDrawMode.Sliced;
-        divSr.size = new Vector2(WindowW - 0.4f, 0.012f);
+        divSr.size = new Vector2(5.2f, 0.012f);
         divSr.sortingOrder = 32766;
-        divSr.maskInteraction = SpriteMaskInteraction.VisibleInsideMask;
-
-        return rowGO;
     }
 
-    private static void UpdateRow(Transform row, PlayerEntry entry, int index)
+    // ── Volume logic ─────────────────────────────────────────────────────
+
+    private static float GetVolume(PlayerEntry entry)
     {
-        row.name = $"Row_{entry.Name}";
-        row.localPosition = new Vector3(0f, -index * RowH, 0f);
-
-        // Icon color
-        var icon = row.Find("Icon");
-        if (icon) { var sr = icon.GetComponent<SpriteRenderer>(); if (sr) sr.color = entry.Color; }
-
-        // Name
-        var nameTmp = row.Find("Name")?.GetComponent<TextMeshPro>();
-        if (nameTmp) nameTmp.text = entry.Name.Length > 14 ? entry.Name[..12] + "…" : entry.Name;
-
-        // Volume label
-        var volTmp = row.Find("VolLabel")?.GetComponent<TextMeshPro>();
-        float currentVol = 1f;
         if (VoiceChatRoom.Current != null)
             foreach (var c in VoiceChatRoom.Current.AllClients)
                 if (c.PlayerName == entry.Name || c.PlayerId == entry.PlayerId)
-                { currentVol = c.Volume; break; }
-
-        if (volTmp)
-            volTmp.text = $"<color=#ffdd88>{Mathf.RoundToInt(currentVol * 100f)}%</color>";
-
-        // Slider
-        var track = row.Find("Track");
-        var fill = track?.Find("Fill");
-        var knob = track?.Find("Knob");
-        var fillSr = fill?.GetComponent<SpriteRenderer>();
-        if (track && fillSr && knob)
-        {
-            float t = Mathf.InverseLerp(VMin, VMax, currentVol);
-            float kX = (t - 0.5f) * SliderW;
-            knob.localPosition = new Vector3(kX, 0f, -0.12f);
-            fillSr.size = new Vector2(t * SliderW, 0.10f);
-            fill.localPosition = new Vector3((t * SliderW - SliderW) * 0.5f, 0f, -0.11f);
-        }
-
-        // Click-to-set slider
-        var pb = track?.GetComponent<PassiveButton>();
-        if (!pb)
-        {
-            var col = track?.gameObject.AddComponent<BoxCollider2D>();
-            if (col) col.size = new Vector2(SliderW, 0.40f);
-            pb = track?.gameObject.AddComponent<PassiveButton>();
-            if (pb)
-            {
-                pb.OnClick = new ButtonClickedEvent();
-                pb.OnMouseOut = new UnityEvent();
-                pb.OnMouseOver = new UnityEvent();
-            }
-        }
-        if (pb && pb.OnClick.GetPersistentEventCount() == 0)
-        {
-            pb.OnClick.AddListener((Action)(() =>
-            {
-                var cam = Camera.main;
-                if (!cam || !track) return;
-                var mWorld = cam.ScreenToWorldPoint(Input.mousePosition);
-                var mLocal = track.InverseTransformPoint(mWorld);
-                float t = Mathf.InverseLerp(-SliderW * 0.5f, SliderW * 0.5f, mLocal.x);
-                ApplyVolume(entry, Mathf.Lerp(VMin, VMax, t));
-            }));
-        }
-
-        // Drag updater
-        var upd = track?.GetComponent<PlayerSliderDragUpdater>();
-        if (!upd) upd = track?.gameObject.AddComponent<PlayerSliderDragUpdater>();
-        if (upd)
-        {
-            upd.Init(track!.gameObject, SliderW, VMin, VMax,
-                v => ApplyVolume(entry, v),
-                () => { foreach (var c in VoiceChatRoom.Current?.AllClients ?? Array.Empty<VCPlayer>()) if (c.PlayerName == entry.Name || c.PlayerId == entry.PlayerId) return c.Volume; return 1f; });
-        }
+                    return c.Volume;
+        return 1f;
     }
 
     private static void ApplyVolume(PlayerEntry entry, float v)
     {
-        v = Mathf.Clamp(v, VMin, VMax);
         if (VoiceChatRoom.Current != null)
             foreach (var c in VoiceChatRoom.Current.AllClients)
                 if (c.PlayerName == entry.Name || c.PlayerId == entry.PlayerId)
                 { c.SetVolume(v); break; }
-        Refresh(); // update all labels
     }
 
-    // ── HUD lifecycle ────────────────────────────────────────────────────
-
-    [HarmonyPatch(typeof(HudManager), nameof(HudManager.Start))]
-    [HarmonyPostfix]
-    static void HudStart(HudManager __instance)
-    {
-        if (_window) { Object.Destroy(_window); }
-        _window = null;
-        _btnPrefab = null;
-        _scrollOffset = 0f;
-    }
-
-    // ── Helpers ──────────────────────────────────────────────────────────
+    // ── Data ─────────────────────────────────────────────────────────────
 
     private record PlayerEntry(byte PlayerId, string Name, Color Color);
 
@@ -327,21 +333,21 @@ public static class VoiceVolumeMenu
     {
         var list = new List<PlayerEntry>();
         if (!AmongUsClient.Instance) return list;
-
         var seen = new HashSet<byte>();
+
         if (VoiceChatRoom.Current != null)
             foreach (var c in VoiceChatRoom.Current.AllClients)
             {
                 if (c.PlayerId == byte.MaxValue || !seen.Add(c.PlayerId)) continue;
                 var pc = FindPlayer(c.PlayerId);
-                list.Add(new PlayerEntry(c.PlayerId, c.PlayerName, GetPaletteColor(pc)));
+                list.Add(new PlayerEntry(c.PlayerId, c.PlayerName, PaletteColor(pc)));
             }
 
         foreach (var pc in PlayerControl.AllPlayerControls)
         {
             if (!pc || pc.Data == null || pc == PlayerControl.LocalPlayer) continue;
             if (!seen.Add(pc.PlayerId)) continue;
-            list.Add(new PlayerEntry(pc.PlayerId, pc.Data.PlayerName, GetPaletteColor(pc)));
+            list.Add(new PlayerEntry(pc.PlayerId, pc.Data.PlayerName, PaletteColor(pc)));
         }
         return list;
     }
@@ -353,60 +359,44 @@ public static class VoiceVolumeMenu
         return null;
     }
 
-    private static Color GetPaletteColor(PlayerControl? pc)
+    private static Color PaletteColor(PlayerControl? pc)
     {
         if (pc?.Data == null) return new Color(0.18f, 0.80f, 0.44f, 1f);
         int cid = pc.Data.DefaultOutfit.ColorId;
-        if (cid >= 0 && cid < Palette.PlayerColors.Length) return Palette.PlayerColors[cid];
-        return Color.white;
+        return cid >= 0 && cid < Palette.PlayerColors.Length ? Palette.PlayerColors[cid] : Color.white;
     }
 
-    private static ToggleButtonBehaviour? FindButtonPrefab()
+    // ── Helpers ──────────────────────────────────────────────────────────
+
+    private static void SmallBtn(string label, Vector3 pos, Action onClick)
     {
-        var optMenu = Object.FindObjectOfType<OptionsMenuBehaviour>();
-        if (!optMenu || !optMenu.CensorChatButton) return null;
-        var prefab = Object.Instantiate(optMenu.CensorChatButton);
-        Object.DontDestroyOnLoad(prefab);
-        prefab.name = "VC_VolumeMenu_BtnPrefab";
-        prefab.gameObject.SetActive(false);
-        return prefab;
-    }
-
-    private static GameObject CreateSmallTextButton(string label, Vector3 pos, Action onClick)
-    {
-        var go = new GameObject($"Btn_{label}");
-        go.transform.SetParent(_window!.transform, false);
-        go.transform.localPosition = pos;
-
-        var sr = go.AddComponent<SpriteRenderer>();
-        sr.sprite = Create1x1Sprite(new Color32(52, 64, 98, 220));
-        sr.drawMode = SpriteDrawMode.Sliced;
-        sr.size = new Vector2(0.34f, 0.34f);
-        sr.sortingOrder = 32767;
-
-        var textGO = new GameObject("T");
-        textGO.transform.SetParent(go.transform, false);
-        textGO.transform.localPosition = new Vector3(0f, 0f, -0.1f);
-        var tmp = textGO.AddComponent<TextMeshPro>();
-        tmp.text = label; tmp.fontSize = 1.4f;
-        tmp.alignment = TextAlignmentOptions.Center;
-        tmp.sortingOrder = 32767; tmp.color = Color.white;
-        tmp.rectTransform.sizeDelta = new Vector2(0.34f, 0.34f);
-
-        var col = go.AddComponent<BoxCollider2D>();
-        col.size = new Vector2(0.34f, 0.34f);
-        var pb = go.AddComponent<PassiveButton>();
+        var btn = Object.Instantiate(_btnPrefab!, _popUp!.transform);
+        btn.name = $"Btn_{label}";
+        btn.transform.localPosition = pos;
+        btn.transform.localScale = new Vector3(0.35f, 0.7f, 1f);
+        btn.Text.text = label;
+        btn.Text.fontSizeMin = btn.Text.fontSizeMax = 1.6f;
+        btn.Text.alignment = TextAlignmentOptions.Center;
+        btn.Text.color = new Color32(200, 215, 255, 255);
+        btn.Background.color = new Color32(52, 64, 98, 255);
+        btn.onState = false;
+        btn.gameObject.SetActive(true);
+        foreach (var sr in btn.GetComponentsInChildren<SpriteRenderer>())
+            sr.size = new Vector2(0.5f, 0.4f);
+        var pb = btn.GetComponent<PassiveButton>();
         pb.OnClick = new ButtonClickedEvent();
         pb.OnClick.AddListener((Action)(() => onClick()));
-        pb.OnMouseOut = new UnityEvent();
-        pb.OnMouseOver = new UnityEvent();
-        pb.OnMouseOver.AddListener((Action)(() => sr.color = new Color32(75, 90, 130, 255)));
-        pb.OnMouseOut.AddListener((Action)(() => sr.color = Color.white));
-        return go;
+    }
+
+    private static Sprite Create1x1Sprite(Color32 c)
+    {
+        var tex = new Texture2D(1, 1, TextureFormat.RGBA32, false);
+        tex.SetPixel(0, 0, c); tex.Apply();
+        return Sprite.Create(tex, new Rect(0, 0, 1, 1), new Vector2(0.5f, 0.5f));
     }
 
     private static Sprite? _circleSprite;
-    private static Sprite GetCircleSprite()
+    private static Sprite CreateCircleSprite()
     {
         if (_circleSprite) return _circleSprite;
         const int S = 64;
@@ -416,19 +406,11 @@ public static class VoiceVolumeMenu
             for (int x = 0; x < S; x++)
             {
                 float dx = x - r + 0.5f, dy = y - r + 0.5f;
-                float a = Mathf.Clamp01((r - Mathf.Sqrt(dx * dx + dy * dy)) * 2f);
-                tex.SetPixel(x, y, new Color(1, 1, 1, a));
+                tex.SetPixel(x, y, Color.white with { a = Mathf.Clamp01((r - Mathf.Sqrt(dx * dx + dy * dy)) * 2f) });
             }
         tex.Apply();
         _circleSprite = Sprite.Create(tex, new Rect(0, 0, S, S), new Vector2(0.5f, 0.5f), S);
         return _circleSprite;
-    }
-
-    private static Sprite Create1x1Sprite(Color32 c)
-    {
-        var tex = new Texture2D(1, 1, TextureFormat.RGBA32, false);
-        tex.SetPixel(0, 0, c); tex.Apply();
-        return Sprite.Create(tex, new Rect(0, 0, 1, 1), new Vector2(0.5f, 0.5f));
     }
 }
 

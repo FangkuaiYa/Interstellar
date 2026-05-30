@@ -10,9 +10,9 @@ public class AndroidSpeaker : IDisposable
 {
     private const int SampleRate = 48000;
     private const int Channels = 2;
-
     private const int RingCapacity = 96000;
-    private const int ReadBlock = 3840;
+    private const int ReadBlock = 1920;
+    private const int PrefillTarget = 32768;
 
     private readonly ManualSpeaker _manualSpeaker;
 
@@ -20,18 +20,18 @@ public class AndroidSpeaker : IDisposable
     private AudioClip? _clip;
     private GameObject? _gameObject;
 
-    private readonly float[] _ringBuffer = new float[RingCapacity];
-    private int _ringWritePos, _ringReadPos, _ringCount;
-    private readonly object _ringLock = new();
+    private readonly float[] _ring = new float[RingCapacity];
+    private int _wpos, _rpos, _count;
+    private readonly object _lock = new();
 
-    private readonly float[] _readScratch = new float[ReadBlock];
-    private readonly float[] _silenceBlock = new float[ReadBlock];
+    private readonly float[] _scratch = new float[ReadBlock];
+    private readonly float[] _silence = new float[ReadBlock];
 
-    private Action<Il2CppStructArray<float>>? _pcmReaderManaged;
-    private AudioClip.PCMReaderCallback? _pcmReader;
+    private Action<Il2CppStructArray<float>>? _pcmManaged;
+    private AudioClip.PCMReaderCallback? _pcmCb;
+    private bool _started, _playStarted, _disposed;
     private float _diagTimer;
-    private int _underrunCount, _totalCallbacks;
-    private bool _loggedFirstCallback, _started, _disposed;
+    private int _cbCount, _urCount, _lastCb, _lastUr;
 
     public ManualSpeaker Speaker => _manualSpeaker;
 
@@ -44,12 +44,12 @@ public class AndroidSpeaker : IDisposable
     {
         if (_started) return;
 
-        _pcmReaderManaged = new Action<Il2CppStructArray<float>>(OnPcmRead);
-        _pcmReader = DelegateSupport.ConvertDelegate<AudioClip.PCMReaderCallback>(_pcmReaderManaged);
-        if (_pcmReader == null)
+        _pcmManaged = new Action<Il2CppStructArray<float>>(OnPcmRead);
+        _pcmCb = DelegateSupport.ConvertDelegate<AudioClip.PCMReaderCallback>(_pcmManaged);
+        if (_pcmCb == null)
             throw new InvalidOperationException("Failed to create IL2CPP PCM reader callback.");
 
-        _clip = AudioClip.Create("VC_Out", SampleRate, Channels, SampleRate, true, _pcmReader);
+        _clip = AudioClip.Create("VC_Out", SampleRate / 4, Channels, SampleRate, true, _pcmCb);
 
         _gameObject = new GameObject("VC_AndroidSpeaker");
         UnityEngine.Object.DontDestroyOnLoad(_gameObject);
@@ -59,45 +59,53 @@ public class AndroidSpeaker : IDisposable
         _audioSource.volume = 1f;
         _audioSource.spatialBlend = 0f;
         _audioSource.clip = _clip;
-        _audioSource.Play();
 
         _started = true;
-        VoiceChatPluginMain.Logger.LogInfo($"[VC:AndroidSpk] Started: {SampleRate}Hz stereo");
+        VoiceChatPluginMain.Logger.LogInfo($"[VC:AndroidSpk] Ring buffer: cap={RingCapacity} block={ReadBlock} prefill={PrefillTarget}");
     }
 
     public void Update()
     {
         if (!_started || _disposed) return;
 
-        try { _manualSpeaker.Read(_readScratch); }
-        catch { Array.Copy(_silenceBlock, _readScratch, ReadBlock); }
+        try { _manualSpeaker.Read(_scratch); }
+        catch { Array.Copy(_silence, _scratch, ReadBlock); }
 
-        lock (_ringLock)
+        lock (_lock)
         {
-            if (_ringCount + ReadBlock > RingCapacity)
+            if (_count + ReadBlock > RingCapacity)
             {
-                int drop = _ringCount + ReadBlock - RingCapacity;
-                _ringReadPos = (_ringReadPos + drop) % RingCapacity;
-                _ringCount -= drop;
+                int drop = _count + ReadBlock - RingCapacity;
+                _rpos = (_rpos + drop) % RingCapacity;
+                _count -= drop;
             }
 
-            int first = Math.Min(ReadBlock, RingCapacity - _ringWritePos);
-            Array.Copy(_readScratch, 0, _ringBuffer, _ringWritePos, first);
+            int first = Math.Min(ReadBlock, RingCapacity - _wpos);
+            Array.Copy(_scratch, 0, _ring, _wpos, first);
             int remain = ReadBlock - first;
-            if (remain > 0)
-                Array.Copy(_readScratch, first, _ringBuffer, 0, remain);
-            _ringWritePos = (_ringWritePos + ReadBlock) % RingCapacity;
-            _ringCount += ReadBlock;
+            if (remain > 0) Array.Copy(_scratch, first, _ring, 0, remain);
+            _wpos = (_wpos + ReadBlock) % RingCapacity;
+            _count += ReadBlock;
+
+            if (!_playStarted && _count >= PrefillTarget)
+            {
+                _playStarted = true;
+                _audioSource?.Play();
+                VoiceChatPluginMain.Logger.LogInfo($"[VC:AndroidSpk] Play after prefill, ring={_count * 1000f / (SampleRate * Channels):F0}ms");
+            }
         }
 
         _diagTimer += Time.unscaledDeltaTime;
         if (_diagTimer > 3f)
         {
             _diagTimer = 0f;
-            float bufMs;
-            lock (_ringLock) { bufMs = (float)_ringCount / (SampleRate * Channels) * 1000f; }
+            float ms;
+            int cb, ur;
+            lock (_lock) { ms = (float)_count / (SampleRate * Channels) * 1000f; }
+            cb = _cbCount - _lastCb; _lastCb = _cbCount;
+            ur = _urCount - _lastUr; _lastUr = _urCount;
             VoiceChatPluginMain.Logger.LogInfo(
-                $"[VC:AndroidSpk] ring={bufMs:F0}ms cb={_totalCallbacks} underruns={_underrunCount}");
+                $"[VC:AndroidSpk] ring={ms:F0}ms cb+{cb} ur+{ur} totalUR={_urCount}");
         }
     }
 
@@ -106,32 +114,26 @@ public class AndroidSpeaker : IDisposable
         int needed = data.Length;
         int written = 0;
 
-        lock (_ringLock)
+        lock (_lock)
         {
-            while (written < needed && _ringCount > 0)
+            while (written < needed && _count > 0)
             {
-                int toCopy = Math.Min(needed - written, Math.Min(_ringCount, RingCapacity - _ringReadPos));
-                for (int i = 0; i < toCopy; i++)
-                    data[written + i] = _ringBuffer[_ringReadPos + i];
-                written += toCopy;
-                _ringReadPos = (_ringReadPos + toCopy) % RingCapacity;
-                _ringCount -= toCopy;
+                int n = Math.Min(needed - written, Math.Min(_count, RingCapacity - _rpos));
+                for (int i = 0; i < n; i++)
+                    data[written + i] = _ring[_rpos + i];
+                written += n;
+                _rpos = (_rpos + n) % RingCapacity;
+                _count -= n;
             }
         }
 
         if (written < needed)
         {
-            _underrunCount++;
-            for (int i = written; i < needed; i++)
-                data[i] = 0f;
+            _urCount++;
+            for (int i = written; i < needed; i++) data[i] = 0f;
         }
 
-        _totalCallbacks++;
-        if (!_loggedFirstCallback)
-        {
-            _loggedFirstCallback = true;
-            VoiceChatPluginMain.Logger.LogInfo($"[VC:AndroidSpk] First PCM cb: needed={needed} written={written}");
-        }
+        _cbCount++;
     }
 
     public void Stop()
@@ -139,11 +141,9 @@ public class AndroidSpeaker : IDisposable
         if (_audioSource != null) { _audioSource.Stop(); _audioSource.clip = null; }
         if (_clip != null) { UnityEngine.Object.Destroy(_clip); _clip = null; }
         if (_gameObject != null) { UnityEngine.Object.Destroy(_gameObject); _gameObject = null; }
-        _audioSource = null;
-        _started = false;
-
-        lock (_ringLock) { _ringWritePos = _ringReadPos = _ringCount = 0; }
-        VoiceChatPluginMain.Logger.LogInfo("[VC:AndroidSpk] Speaker stopped.");
+        _audioSource = null; _started = false; _playStarted = false;
+        lock (_lock) { _wpos = _rpos = _count = 0; }
+        VoiceChatPluginMain.Logger.LogInfo("[VC:AndroidSpk] Stopped.");
     }
 
     public void Dispose()

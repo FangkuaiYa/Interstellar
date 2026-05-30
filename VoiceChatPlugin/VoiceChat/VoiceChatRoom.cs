@@ -84,9 +84,9 @@ public class VoiceChatRoom
 
         source.Connect(_clientVolume);
         _clientVolume.Connect(_imager);
-        _imager.Connect(_normalVolume);
-        _normalVolume.Connect(_levelMeter);
-        _levelMeter.Connect(masterRouter);
+        _imager.Connect(_levelMeter);
+        _levelMeter.Connect(_normalVolume);
+        _normalVolume.Connect(masterRouter);
         _imager.Connect(ghostLowpass);
         ghostLowpass.Connect(_ghostVolume);
         _ghostVolume.Connect(ghostReverb1);
@@ -110,7 +110,7 @@ public class VoiceChatRoom
                     if (isLocal)
                     {
                         _clientVolume.GetProperty(instance).Volume = 1f;
-                        _normalVolume.GetProperty(instance).Volume = 1f;
+                        _normalVolume.GetProperty(instance).Volume = 0f;
                         _localMicMeter = _levelMeter.GetProperty(instance);
                         VoiceChatPluginMain.Logger.LogInfo("[VC] Local client connected.");
                     }
@@ -134,10 +134,11 @@ public class VoiceChatRoom
                     _clients.Remove(clientId);
                     VoiceChatPluginMain.Logger.LogInfo($"[VC] Client {clientId} disconnected.");
                 },
-            }.SetBufferLength(2048));
+            }.SetBufferLength(9600));
 
         _masterVolumeProperty = masterRouter.GetProperty(_interstellar);
         SetMasterVolume(VoiceChatConfig.MasterVolume);
+        _interstellar.SetLoopBack(false);
 
         if (IsAndroid)
         {
