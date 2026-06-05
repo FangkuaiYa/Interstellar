@@ -1,40 +1,153 @@
-name: AutoBuild .NET
+name: CI
 
 on:
   push:
-    branches:
-      - '**'
+    paths:
+      - '.github/workflows/build.yml'
+      - 'Interstellar.Client/**'
+      - 'Interstellar.Messages/**'
+      - 'Interstellar.Server/**'
+      - 'Interstellar.sln'
+      - 'nuget.config'
+      - 'Dockerfile'
+      - 'docker-compose.yml'
+  pull_request:
+    paths:
+      - '.github/workflows/build.yml'
+      - 'Interstellar.Client/**'
+      - 'Interstellar.Messages/**'
+      - 'Interstellar.Server/**'
+      - 'Interstellar.sln'
+      - 'nuget.config'
+  workflow_dispatch:
 
 jobs:
-  build:
-    runs-on: ubuntu-22.04
+  # ── Server: cross-platform single-file publish ─────────────────────
+  server:
+    runs-on: ubuntu-latest
+
     strategy:
       matrix:
-        config: [Windows, Android]
+        runtime:
+          - linux-x64
+          - linux-arm64
+          - win-x64
+          - osx-x64
+
     steps:
-      - uses: actions/cache@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache NuGet
+        uses: actions/cache@v4
         with:
-          path: |
-            ~/.nuget/packages
-            ~/.cache/bepinex
-          key: ${{ runner.os }}-nuget-${{ hashFiles('**/packages.lock.json') }}
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
           restore-keys: |
             ${{ runner.os }}-nuget-
-      
-      - uses: actions/checkout@v4
-        with:
-          submodules: true
 
-      - name: Setup .NET
+      - name: Setup .NET 8
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 6.x
+          dotnet-version: '8.0.x'
 
-      - name: Build ${{ matrix.config }}
-        run: dotnet build VoiceChatPlugin/VoiceChatPlugin.csproj --configuration ${{ matrix.config }}
+      - name: Restore
+        run: dotnet restore Interstellar.Server/Interstellar.Server.csproj -r ${{ matrix.runtime }}
 
-      - name: Upload artifact for ${{ matrix.config }}
+      - name: Publish single-file
+        run: |
+          dotnet publish Interstellar.Server/Interstellar.Server.csproj \
+            -c Release \
+            -r ${{ matrix.runtime }} \
+            -o publish/${{ matrix.runtime }} \
+            --self-contained true \
+            -p:PublishSingleFile=true \
+            -p:UseAppHost=true \
+            -p:DebugType=none \
+            -p:DebugSymbols=false
+
+      - name: Package (linux / osx)
+        if: startsWith(matrix.runtime, 'linux') || startsWith(matrix.runtime, 'osx')
+        shell: bash
+        run: |
+          cd publish/${{ matrix.runtime }}
+          chmod +x Interstellar.Server
+          tar czf ../Interstellar.Server-${{ matrix.runtime }}.tar.gz *
+
+      - name: Package (windows)
+        if: startsWith(matrix.runtime, 'win')
+        shell: bash
+        run: |
+          cd publish/${{ matrix.runtime }}
+          zip -r ../Interstellar.Server-${{ matrix.runtime }}.zip *
+
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: VoiceChatPlugin-${{ matrix.config }}
-          path: VoiceChatPlugin/bin/${{ matrix.config }}/net6.0/VoiceChatPlugin.dll
+          name: Interstellar.Server-${{ matrix.runtime }}
+          path: publish/Interstellar.Server-${{ matrix.runtime }}.*
+
+  # ── Client: BepInEx plugin (Windows, net6.0) ──────────────────────
+  client:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache NuGet
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      - name: Setup .NET 6
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '6.0.x'
+
+      - name: Restore
+        run: dotnet restore Interstellar.sln
+
+      - name: Build Messages
+        run: dotnet build Interstellar.Messages/Interstellar.Messages.csproj -c Release
+
+      - name: Build Client (pass 1 — collect deps)
+        run: dotnet build Interstellar.Client/Interstellar.Client.csproj -c Release
+
+      - name: Build Client (pass 2 — embed deps)
+        run: dotnet build Interstellar.Client/Interstellar.Client.csproj -c Release
+
+      - name: Collect output
+        shell: bash
+        run: |
+          mkdir -p publish/Plugin
+          cp Interstellar.Client/bin/Release/net6.0/Interstellar.Client.dll publish/Plugin/
+          echo "Plugin built."
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Interstellar.Client
+          path: publish/Plugin/
+
+  # ── Release: on tag, create GitHub Release ────────────────────────
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [server, client]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: |
+            Interstellar.Server-*/Interstellar.Server-*.tar.gz
+            Interstellar.Server-*/Interstellar.Server-*.zip
+            Interstellar.Client/**/*
