@@ -35,10 +35,7 @@ internal class VCClient
         myRoom.Broadcast(ClientId, new ShareMuteStatusMessage(ClientId, isMute));
     }
 
-    /// <summary>
-    /// Called when someone other than this client joins or leaves.
-    /// </summary>
-    /// <param name="currentMask"></param>
+    /// <summary>Called when someone other than this client joins or leaves.</summary>
     public void OnJoinOrLeaveAnyone(long currentMask) {
         this.service.SendTracksMask(currentMask);
     }
@@ -48,11 +45,7 @@ internal class VCClient
         this.service.SendClientLeft(clientId);
     }
 
-    /// <summary>
-    /// Broadcasts own audio to the room.
-    /// </summary>
-    /// <param name="durationRtpUnits"></param>
-    /// <param name="encodedAudio"></param>
+    /// <summary>Broadcasts own audio to the room.</summary>
     public void BroadcastAudio(uint durationRtpUnits, byte[] encodedAudio)
     {
         myRoom.Broadcast(ClientId, durationRtpUnits, encodedAudio);
@@ -63,12 +56,7 @@ internal class VCClient
         myRoom.BroadcastRawMessage(ClientId, message.ToArray());
     }
 
-    /// <summary>
-    /// Sends audio to this client.
-    /// </summary>
-    /// <param name="id"></param>
-    /// <param name="durationRtpUnits"></param>
-    /// <param name="encodedAudio"></param>
+    /// <summary>Sends audio to this client.</summary>
     public void SendAudio(int id, uint durationRtpUnits, byte[] encodedAudio)
     {
         this.service.SendAudio(id, durationRtpUnits, encodedAudio);
@@ -100,9 +88,7 @@ internal class VCClient
         return false;
     }
 
-    /// <summary>
-    /// Disconnects from this client.
-    /// </summary>
+    /// <summary>Disconnects from this client.</summary>
     public void Close()
     {
         myRoom.Leave(this);

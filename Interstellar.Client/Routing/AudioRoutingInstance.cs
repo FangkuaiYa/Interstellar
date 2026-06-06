@@ -34,5 +34,5 @@ public class AudioRoutingInstance : IHasAudioPropertyNode
     }
 
     private long LastReceiptTime = System.DateTime.Now.Ticks;
-    public int ElapsedSinceLastReceipt => (int)((System.DateTime.Now.Ticks - LastReceiptTime) / 10000);//ミリ秒単位
+    public int ElapsedSinceLastReceipt => (int)((System.DateTime.Now.Ticks - LastReceiptTime) / 10000); // milliseconds
 }

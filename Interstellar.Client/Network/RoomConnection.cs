@@ -6,6 +6,7 @@ using NAudio.Wave;
 using SIPSorcery.Net;
 using System;
 using System.Text;
+using VoiceChatPlugin;
 using WebSocketSharp;
 
 namespace Interstellar.Network;
@@ -77,6 +78,14 @@ internal class RoomConnection : IMessageProcessor
         {
             if (e.IsBinary) MessagePacker.UnpackMessages(e.RawData, this);
         };
+        this.socket.OnError += (sender, e) =>
+        {
+            InterstellarPlugin.Logger.LogError($"[VC] WebSocket error: {e.Message} (url={url})");
+        };
+        this.socket.OnClose += (sender, e) =>
+        {
+            InterstellarPlugin.Logger.LogWarning($"[VC] WebSocket closed: code={e.Code} reason={e.Reason} (url={url})");
+        };
         Connect();
     }
 
@@ -111,10 +120,13 @@ internal class RoomConnection : IMessageProcessor
     {
         this.socket.OnOpen += (sender, e) =>
         {
+            InterstellarPlugin.Logger.LogInfo($"[VC] WebSocket connected. Setting up RTC...");
             SetUpRTCConnection();
             this.socket.SendMessage(new JoinMessage(this.roomCode, this.region));
+            InterstellarPlugin.Logger.LogInfo($"[VC] JoinMessage sent: room={this.roomCode} region={this.region}");
         };
         this.socket.Connect();
+        InterstellarPlugin.Logger.LogInfo($"[VC] WebSocket connecting...");
     }
 
     private void SetUpRTCConnection()
@@ -207,14 +219,17 @@ internal class RoomConnection : IMessageProcessor
     {
         int id = message.Id;
         myClientId = id;
+        InterstellarPlugin.Logger.LogInfo($"[VC] Received client ID: {id}");
         var localTrack = new MediaStreamTrack(AudioHelpers.GetOpusFormat(id), MediaStreamStatusEnum.SendOnly);
         connection!.addTrack(localTrack);
         localAudioStream = connection.AudioStreamList.Find(a => a.GetSendingFormat().ID == id);
+        InterstellarPlugin.Logger.LogInfo($"[VC] Local audio track added (id={id}, stream={localAudioStream != null})");
     }
 
     MediaStreamTrack[] tracks = new MediaStreamTrack[AudioHelpers.MaxTracks]; 
     private void OnReceiveSdpOffer(SdpOfferMessage message)
     {
+        InterstellarPlugin.Logger.LogInfo($"[VC] Received SDP offer (mask={message.Mask})");
         // Update tracks (without removing)
         long mask = message.Mask;
         for (int i = 0; i < AudioHelpers.MaxTracks; i++)
@@ -235,10 +250,12 @@ internal class RoomConnection : IMessageProcessor
         var answer = connection.createAnswer(null);
         connection.setLocalDescription(answer).Wait();
         socket.SendMessage(new SdpAnswerMessage(answer.sdp));
+        InterstellarPlugin.Logger.LogInfo("[VC] SDP answer sent.");
     }
 
     private void OnReceiveIceCandMessage(IceCandMessage message)
     {
+        InterstellarPlugin.Logger.LogInfo($"[VC] Received ICE candidate (mid={message.SdpMid})");
         connection!.addIceCandidate(new RTCIceCandidateInit
         {
             candidate = message.Candidate,

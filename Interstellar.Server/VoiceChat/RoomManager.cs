@@ -10,21 +10,6 @@ static internal class RoomManager
 {
     static private Dictionary<string, VCRoom> rooms = [];
 
-    /// <summary>Total connected clients across all rooms.</summary>
-    static public int TotalClientCount
-    {
-        get
-        {
-            int count = 0;
-            foreach (var room in rooms.Values)
-                count += room.ClientCount;
-            return count;
-        }
-    }
-
-    /// <summary>Number of active rooms.</summary>
-    static public int RoomCount => rooms.Count;
-
     static public VCRoom GetRoom(string region, string roomId)
     {
         string key = region + "." + roomId;
@@ -41,4 +26,38 @@ static internal class RoomManager
     }
 
     static public void RemoveRoom(string key) => rooms.Remove(key);
+
+    public static int TotalClientCount
+    {
+        get
+        {
+            int count = 0;
+            foreach (var room in rooms.Values)
+                count += room.ClientCount;
+            return count;
+        }
+    }
+
+    public static int RoomCount => rooms.Count;
+
+    public readonly record struct RoomSnapshot(string Region, string RoomId, int ClientCount, ClientSnapshot[] Clients);
+    public readonly record struct ClientSnapshot(byte VoiceId, byte? PlayerId, string? PlayerName, bool IsMuted);
+
+    public static List<RoomSnapshot> GetRoomSnapshots()
+    {
+        var list = new List<RoomSnapshot>();
+        foreach (var kv in rooms)
+        {
+            var room = kv.Value;
+            var clients = new List<ClientSnapshot>();
+            foreach (var c in room.Clients)
+            {
+                c.TryGetProfile(out var name, out var pid);
+                clients.Add(new ClientSnapshot(c.ClientId, pid != 0 ? pid : null, name, c.IsMute));
+            }
+            var parts = kv.Key.Split('.', 2);
+            list.Add(new RoomSnapshot(parts[0], parts.Length > 1 ? parts[1] : "", room.ClientCount, clients.ToArray()));
+        }
+        return list;
+    }
 }

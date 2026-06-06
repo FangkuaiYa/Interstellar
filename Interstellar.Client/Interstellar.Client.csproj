@@ -42,6 +42,7 @@
        ================================================================ -->
   <ItemGroup>
     <EmbeddedResource Include="Resources\*.png" />
+    <EmbeddedResource Include="Resources\Logo.jpg" />
   </ItemGroup>
 
   <!-- ================================================================

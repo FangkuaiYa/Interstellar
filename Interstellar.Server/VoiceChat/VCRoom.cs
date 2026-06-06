@@ -15,7 +15,6 @@ internal class VCRoom
     string myKey;
     Dictionary<byte, VCClient> fastClients = new();
 
-    /// <summary>Number of clients currently in this room.</summary>
     public int ClientCount => fastClients.Count;
 
     public VCRoom(string key)
@@ -52,7 +51,7 @@ internal class VCRoom
         var client = new VCClient(service, AvailableId(), this);
         fastClients.Add(client.ClientId, client);
         
-        // Notify join.
+        // Notify join
         long currentMask = CurrentVoiceMask;
 
         foreach (var c in fastClients.Values)
@@ -67,7 +66,7 @@ internal class VCRoom
     {
         if (fastClients.Remove(client.ClientId))
         {
-            // Notify leave.
+            // Notify leave
             long currentMask = CurrentVoiceMask;
             foreach (var c in fastClients.Values)
             {

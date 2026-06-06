@@ -1,212 +1,93 @@
 using Interstellar.Server.Services;
 using Interstellar.Server.VoiceChat;
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Net;
 using System.Security.Authentication;
 using System.Text;
-using System.Threading.Tasks;
 using WebSocketSharp.Server;
 
 namespace Interstellar.Server;
 
 internal class Server
 {
-    private readonly HttpServer http;
-    private readonly string? turnUrl;
-    private readonly string? turnUser;
-    private readonly string? turnPass;
-
-    private Server(string url, bool secure, string? certPath, string? password,
-                   string? turnUrl, string? turnUser, string? turnPass)
+    static public void StartServer(string url, bool secure, string? certPath, string? password,
+                                    string? turnUrl = null, string? turnUser = null, string? turnPass = null)
     {
-        this.turnUrl = turnUrl;
-        this.turnUser = turnUser;
-        this.turnPass = turnPass;
-
-        http = new HttpServer(url);
-
-        if (secure && certPath != null)
-        {
-            http.SslConfiguration.EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13;
-            http.SslConfiguration.ServerCertificate =
-                new System.Security.Cryptography.X509Certificates.X509Certificate2(certPath, password ?? "");
-        }
-
-        // --- HTTP handlers ---
-        http.OnGet += HandleHttpGet;
-
-        // --- WebSocket /vc endpoint ---
-        http.AddWebSocketService<VCClientService>("/vc");
-
-        // Pass TURN config to the service factory so each connection gets it
+        // Pass TURN config to the WebSocket service
         VCClientService.GlobalTurnUrl = turnUrl;
         VCClientService.GlobalTurnUser = turnUser;
         VCClientService.GlobalTurnPass = turnPass;
 
+        var http = new HttpServer(url);
+        if (secure && certPath != null)
+        {
+            http.SslConfiguration.EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13;
+            http.SslConfiguration.ServerCertificate = new System.Security.Cryptography.X509Certificates.X509Certificate2(certPath, password ?? "");
+        }
+
+        http.OnGet += (sender, e) =>
+        {
+            Console.WriteLine("HTTP request: " + e.Request.Url.AbsolutePath);
+            var req = e.Request;
+            var res = e.Response;
+            var path = req.Url.AbsolutePath;
+
+            string body;
+            string contentType = "text/plain; charset=utf-8";
+            int status = 200;
+
+            if (path == "/" || path == "/index.html")
+            {
+                contentType = "text/html; charset=utf-8";
+                body = BuildDashboardHtml();
+            }
+            else if (path == "/health")
+            {
+                contentType = "application/json; charset=utf-8";
+                body = "{\"status\":\"ok\"}";
+            }
+            else if (path == "/stats")
+            {
+                contentType = "application/json; charset=utf-8";
+                body = BuildStatsJson(turnUrl);
+            }
+            else if (path == "/api/rooms")
+            {
+                contentType = "application/json; charset=utf-8";
+                body = BuildRoomsJson(turnUrl);
+            }
+            else if (path == "/vc")
+            {
+                status = 426;
+                res.Headers.Add("Upgrade", "websocket");
+                body = "This endpoint is WebSocket only. Use ws://.../vc or wss://.../vc";
+            }
+            else
+            {
+                status = 404;
+                body = "Not Found";
+            }
+
+            res.StatusCode = status;
+            res.ContentType = contentType;
+            res.ContentEncoding = Encoding.UTF8;
+            var buf = Encoding.UTF8.GetBytes(body);
+            res.ContentLength64 = buf.LongLength;
+            using (var os = res.OutputStream) { os.Write(buf, 0, buf.Length); }
+        };
+
+        http.AddWebSocketService<VCClientService>("/vc");
         http.KeepClean = true;
         http.WaitTime = TimeSpan.FromSeconds(30);
-    }
-
-    private void HandleHttpGet(object? sender, HttpRequestEventArgs e)
-    {
-        Console.WriteLine("HTTP request: " + e.Request.Url.AbsolutePath);
-        var req = e.Request;
-        var res = e.Response;
-        var path = req.Url.AbsolutePath;
-
-        string body;
-        string contentType = "text/plain; charset=utf-8";
-        int status = 200;
-
-        if (path == "/" || path == "/index.html")
-        {
-            contentType = "text/html; charset=utf-8";
-            body = BuildDashboardHtml();
-        }
-        else if (path == "/health")
-        {
-            contentType = "application/json; charset=utf-8";
-            body = BuildHealthJson();
-        }
-        else if (path == "/stats")
-        {
-            contentType = "application/json; charset=utf-8";
-            body = BuildStatsJson();
-        }
-        else if (path == "/vc")
-        {
-            status = 426; // Upgrade Required
-            res.Headers.Add("Upgrade", "websocket");
-            body = "This endpoint is WebSocket only. Use ws://.../vc or wss://.../vc";
-        }
-        else
-        {
-            status = 404;
-            body = "Not Found";
-        }
-
-        res.StatusCode = status;
-        res.ContentType = contentType;
-        res.ContentEncoding = Encoding.UTF8;
-        var buf = Encoding.UTF8.GetBytes(body);
-        res.ContentLength64 = buf.LongLength;
-        using (var os = res.OutputStream) { os.Write(buf, 0, buf.Length); }
-    }
-
-    private string BuildDashboardHtml()
-    {
-        int clientCount = RoomManager.TotalClientCount;
-        int roomCount = RoomManager.RoomCount;
-        bool coturnEnabled = !string.IsNullOrEmpty(turnUrl);
-        string coturnDisplay = coturnEnabled
-            ? $"<span style='color:#4f4'>Enabled — {System.Net.WebUtility.HtmlEncode(turnUrl)}</span>"
-            : "<span style='color:#f44'>Disabled</span>";
-        string secureDisplay = http.SslConfiguration.ServerCertificate != null
-            ? "<span style='color:#4f4'>WSS Enabled</span>"
-            : "<span style='color:#f84'>WS only (no TLS)</span>";
-
-        return $@"<!DOCTYPE html>
-<html lang='en'>
-<head>
-<meta charset='utf-8'>
-<meta name='viewport' content='width=device-width,initial-scale=1'>
-<title>Interstellar Voice Server</title>
-<style>
-  * {{ margin:0; padding:0; box-sizing:border-box; }}
-  body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-         background: #0d1117; color: #c9d1d9; display:flex; justify-content:center;
-         align-items:center; min-height:100vh; }}
-  .card {{ background: #161b22; border: 1px solid #30363d; border-radius: 12px;
-           padding: 40px; max-width: 520px; width: 90%; text-align: center; }}
-  h1 {{ color: #58a6ff; margin-bottom: 8px; font-size: 1.8em; }}
-  .sub {{ color: #8b949e; margin-bottom: 28px; font-size: 0.9em; }}
-  .stat {{ display: flex; justify-content: space-between; padding: 10px 0;
-           border-bottom: 1px solid #21262d; }}
-  .stat:last-child {{ border-bottom: none; }}
-  .label {{ color: #8b949e; }}
-  .value {{ font-weight: 600; font-size: 1.1em; color: #e6edf3; }}
-  .big {{ font-size: 2em; color: #58a6ff; }}
-  .footer {{ margin-top: 24px; font-size: 0.75em; color: #484f58; }}
-  a {{ color: #58a6ff; }}
-</style>
-</head>
-<body>
-<div class='card'>
-  <h1>Interstellar Voice Server</h1>
-  <p class='sub'>Voice Chat Relay — Running</p>
-
-  <div class='stat'>
-    <span class='label'>Connected Clients</span>
-    <span class='value big'>{clientCount}</span>
-  </div>
-  <div class='stat'>
-    <span class='label'>Active Rooms</span>
-    <span class='value'>{roomCount}</span>
-  </div>
-  <div class='stat'>
-    <span class='label'>Coturn / TURN</span>
-    <span class='value'>{coturnDisplay}</span>
-  </div>
-  <div class='stat'>
-    <span class='label'>Transport</span>
-    <span class='value'>{secureDisplay}</span>
-  </div>
-
-  <p class='footer'>
-    <a href='/health'>/health</a> &middot;
-    <a href='/stats'>/stats</a> &middot;
-    WebSocket at <code>/vc</code>
-  </p>
-</div>
-</body>
-</html>";
-    }
-
-    private string BuildHealthJson()
-    {
-        return "{\"status\":\"ok\"}";
-    }
-
-    private string BuildStatsJson()
-    {
-        int clientCount = RoomManager.TotalClientCount;
-        int roomCount = RoomManager.RoomCount;
-        bool coturnEnabled = !string.IsNullOrEmpty(turnUrl);
-        bool wssEnabled = http.SslConfiguration.ServerCertificate != null;
-
-        // Manual JSON building to avoid System.Text.Json dependency issues
-        return "{"
-            + $"\"status\":\"ok\","
-            + $"\"clients\":{clientCount},"
-            + $"\"rooms\":{roomCount},"
-            + $"\"coturn\":{(coturnEnabled ? "true" : "false")},"
-            + $"\"coturnUrl\":\"{EscapeJson(turnUrl ?? "")}\","
-            + $"\"wss\":{(wssEnabled ? "true" : "false")}"
-            + "}";
-    }
-
-    private static string EscapeJson(string s)
-    {
-        return s.Replace("\\", "\\\\").Replace("\"", "\\\"");
-    }
-
-    // ── Static entry point ──────────────────────────────────────────────
-    static public void StartServer(string url, bool secure, string? certPath, string? password,
-                                    string? turnUrl = null, string? turnUser = null, string? turnPass = null)
-    {
-        var server = new Server(url, secure, certPath, password, turnUrl, turnUser, turnPass);
-        server.http.Start();
+        http.Start();
 
         Console.WriteLine("Interstellar Voice Server is running.");
         Console.WriteLine("  Dashboard: " + url);
         Console.WriteLine("  WebSocket: " + url.Replace("http", "ws") + "/vc");
         if (secure)
             Console.WriteLine("  Secure:    " + url.Replace("http", "wss") + "/vc");
+        Console.WriteLine("Press Ctrl-C to exit.");
 
         ManualResetEvent exitEvent = new(false);
-        Console.WriteLine("Press Ctrl-C to exit.");
         Console.CancelKeyPress += (_, e) =>
         {
             e.Cancel = true;
@@ -214,4 +95,179 @@ internal class Server
         };
         exitEvent.WaitOne();
     }
+
+    private static string BuildDashboardHtml()
+    {
+        return @"<!DOCTYPE html>
+<html lang='zh-CN'>
+<head>
+<meta charset='utf-8'>
+<meta name='viewport' content='width=device-width,initial-scale=1'>
+<title>Interstellar Voice Server</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+    background:#090c10;color:#c9d1d9;min-height:100vh;
+    display:flex;flex-direction:column;align-items:center;padding:40px 16px;
+  }
+  canvas#bg{position:fixed;inset:0;z-index:0;opacity:.4}
+  .main{position:relative;z-index:1;width:100%;max-width:600px}
+  .hero{text-align:center;margin-bottom:28px}
+  .hero .status{display:inline-flex;align-items:center;gap:6px;background:rgba(63,185,80,.12);
+    border:1px solid rgba(63,185,80,.25);border-radius:20px;padding:4px 14px;
+    font-size:.78em;color:#3fb950;margin-bottom:14px}
+  .hero .status .dot{width:7px;height:7px;background:#3fb950;border-radius:50%;animation:pulse 2s infinite}
+  @keyframes pulse{0%,100%{opacity:1;box-shadow:0 0 6px #3fb950}50%{opacity:.4;box-shadow:0 0 12px #3fb950}}
+  .hero h1{font-size:1.7em;font-weight:700;color:#e6edf3}
+  .hero .tagline{color:#7d8590;font-size:.85em;margin-top:4px}
+  .big-num{text-align:center;margin-bottom:24px}
+  .big-num .num{font-size:4.2em;font-weight:800;line-height:1;
+    background:linear-gradient(180deg,#58a6ff 0%,#3fb950 100%);
+    -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+  .big-num .label{color:#7d8590;font-size:.82em;margin-top:4px;letter-spacing:.06em;text-transform:uppercase}
+  .info{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px}
+  .info-card{background:#0f131a;border:1px solid #21262d;border-radius:12px;padding:14px 16px;
+    display:flex;justify-content:space-between;align-items:center}
+  .info-card .k{color:#7d8590;font-size:.78em;text-transform:uppercase;letter-spacing:.05em}
+  .info-card .v{font-weight:600;font-size:1em;font-family:'SF Mono','JetBrains Mono',monospace}
+  .info-card .v.on{color:#3fb950}.info-card .v.off{color:#f85149}.info-card .v.warn{color:#d29922}
+  .room{border:1px solid #21262d;border-radius:12px;margin-bottom:10px;overflow:hidden}
+  .room-h{background:#0f131a;padding:12px 16px;display:flex;justify-content:space-between;align-items:center}
+  .room-h .name{color:#c9d1d9;font-weight:500;font-size:.88em}
+  .room-h .count{color:#58a6ff;font-size:.82em;font-weight:600}
+  .pl{display:flex;justify-content:space-between;align-items:center;padding:7px 16px;font-size:.82em}
+  .pl:nth-child(odd){background:rgba(48,54,61,.2)}
+  .pl .pname{color:#c9d1d9}
+  .pl .pname .pid{color:#484f58;margin-left:6px;font-size:.9em}
+  .pl .ptag{color:#7d8590;font-size:.78em}
+  .pl .ptag .mute{color:#d29922;font-weight:600}
+  .empty{text-align:center;color:#484f58;padding:20px;font-size:.78em}
+  .footer{margin-top:20px;text-align:center;font-size:.68em;color:#30363d}
+  .footer span{margin:0 6px}.footer a{color:#484f58;text-decoration:none}.footer a:hover{color:#58a6ff}
+  .err{color:#f85149;text-align:center;padding:8px;font-size:.78em;display:none}
+</style>
+</head>
+<body>
+<canvas id='bg'></canvas>
+<div class='main'>
+  <div class='hero'>
+    <div class='status'><span class='dot'></span>Running</div>
+    <h1>Interstellar Voice</h1>
+    <p class='tagline'>Voice Chat Relay Server</p>
+  </div>
+  <div class='big-num'><div class='num' id='clients'>—</div><div class='label'>Online Players</div></div>
+  <div class='info'>
+    <div class='info-card'><span class='k'>Active Rooms</span><span class='v' id='rooms' style='color:#58a6ff'>—</span></div>
+    <div class='info-card'><span class='k'>TURN Relay</span><span class='v' id='turn'>—</span></div>
+    <div class='info-card'><span class='k'>Transport</span><span class='v' id='transport'>—</span></div>
+    <div class='info-card'><span class='k'>WebSocket</span><span class='v' style='color:#58a6ff'>/vc</span></div>
+  </div>
+  <div id='roomList'></div>
+  <div class='err' id='err'></div>
+  <div class='footer'>
+    <a href='/health'>/health</a><span>·</span><a href='/stats'>/stats</a>
+  </div>
+</div>
+<script>
+var c=document.getElementById('bg'),C=c.getContext('2d');
+function R(){c.width=innerWidth;c.height=innerHeight;var p=[];for(var i=0;i<40;i++)p.push({x:Math.random()*c.width,y:Math.random()*c.height,r:Math.random()*1.5+.3,vx:(Math.random()-.5)*.3,vy:(Math.random()-.5)*.3});function draw(){C.clearRect(0,0,c.width,c.height);for(var i=0;i<p.length;i++){var o=p[i];C.beginPath();C.arc(o.x,o.y,o.r,0,Math.PI*2);C.fillStyle='rgba(88,166,255,.25)';C.fill();for(var j=i+1;j<p.length;j++){var d=Math.hypot(o.x-p[j].x,o.y-p[j].y);if(d<100){C.beginPath();C.moveTo(o.x,o.y);C.lineTo(p[j].x,p[j].y);C.strokeStyle='rgba(88,166,255,'+(.08*(1-d/100))+')';C.lineWidth=.4;C.stroke()}}o.x+=o.vx;o.y+=o.vy;if(o.x<0||o.x>c.width)o.vx*=-1;if(o.y<0||o.y>c.height)o.vy*=-1}requestAnimationFrame(draw)}draw()}
+R();addEventListener('resize',R);
+async function load(){
+  try{
+    let r=await fetch('/api/rooms');
+    if(!r.ok) throw new Error(r.status);
+    let d=await r.json();
+    document.getElementById('clients').textContent=d.clients;
+    document.getElementById('rooms').textContent=d.rooms;
+    let t=document.getElementById('turn');
+    t.textContent=d.coturn?'ON':'OFF';
+    t.className='v '+(d.coturn?'on':'off');
+    document.getElementById('transport').textContent=d.wss?'WSS':'HTTP';
+    document.getElementById('transport').className='v '+(d.wss?'on':'warn');
+    document.getElementById('err').style.display='none';
+    let html='';
+    if(d.roomList&&d.roomList.length){
+      for(let rm of d.roomList){
+        html+='<div class=room><div class=room-h><span class=name>'+esc(rm.region)+' / '+esc(rm.roomId)+'</span><span class=count>'+rm.clients+' clients</span></div><div class=room-b>';
+        if(rm.players&&rm.players.length){
+          for(let p of rm.players){
+            let mt=p.muted?' <span class=mute>[MUTED]</span>':'';
+            html+='<div class=pl><span class=pname>'+esc(p.name||'?')+'<span class=pid>#'+p.pid+'</span></span><span class=ptag>Voice #'+p.vid+mt+'</span></div>';
+          }
+        }else{html+='<div class=empty>Waiting for players…</div>'}
+        html+='</div></div>';
+      }
+    }else{html='<div class=empty>No active rooms</div>'}
+    document.getElementById('roomList').innerHTML=html;
+  }catch(e){
+    document.getElementById('err').style.display='block';
+    document.getElementById('err').textContent='Load failed: '+e.message;
+  }
+}
+function esc(s){var d={'&':'&amp;','<':'&lt;','>':'&gt;','\x22':'&quot;'};return s.replace(/[&<>\x22]/g,c=>d[c])}
+load();setInterval(load,3000);
+</script>
+</body>
+</html>";
+    }
+
+    private static string BuildStatsJson(string? turnUrl)
+    {
+        int clientCount = RoomManager.TotalClientCount;
+        int roomCount = RoomManager.RoomCount;
+        bool coturnEnabled = !string.IsNullOrEmpty(turnUrl);
+        return "{"
+            + $"\"status\":\"ok\","
+            + $"\"clients\":{clientCount},"
+            + $"\"rooms\":{roomCount},"
+            + $"\"coturn\":{(coturnEnabled ? "true" : "false")},"
+            + $"\"coturnUrl\":\"{EscJson(turnUrl ?? "")}\","
+            + $"\"wss\":false"
+            + "}";
+    }
+
+    private static string BuildRoomsJson(string? turnUrl)
+    {
+        int clientCount = RoomManager.TotalClientCount;
+        int roomCount = RoomManager.RoomCount;
+        bool coturnEnabled = !string.IsNullOrEmpty(turnUrl);
+        var snapshots = RoomManager.GetRoomSnapshots();
+
+        var sb = new StringBuilder();
+        sb.Append('{');
+        sb.Append($"\"clients\":{clientCount},");
+        sb.Append($"\"rooms\":{roomCount},");
+        sb.Append($"\"coturn\":{(coturnEnabled ? "true" : "false")},");
+        sb.Append("\"wss\":false,");
+        sb.Append("\"roomList\":[");
+        for (int i = 0; i < snapshots.Count; i++)
+        {
+            var r = snapshots[i];
+            if (i > 0) sb.Append(',');
+            sb.Append('{');
+            sb.Append($"\"region\":\"{EscJson(r.Region)}\",");
+            sb.Append($"\"roomId\":\"{EscJson(r.RoomId)}\",");
+            sb.Append($"\"clients\":{r.ClientCount},");
+            sb.Append("\"players\":[");
+            for (int j = 0; j < r.Clients.Length; j++)
+            {
+                var c = r.Clients[j];
+                if (j > 0) sb.Append(',');
+                sb.Append('{');
+                sb.Append($"\"vid\":{c.VoiceId},");
+                sb.Append($"\"pid\":{(c.PlayerId.HasValue ? c.PlayerId.Value.ToString() : "null")},");
+                sb.Append($"\"name\":\"{EscJson(c.PlayerName ?? "?")}\",");
+                sb.Append($"\"muted\":{(c.IsMuted ? "true" : "false")}");
+                sb.Append('}');
+            }
+            sb.Append(']');
+            sb.Append('}');
+        }
+        sb.Append(']');
+        sb.Append('}');
+        return sb.ToString();
+    }
+
+    private static string EscJson(string s) => s.Replace("\\", "\\\\").Replace("\"", "\\\"");
 }

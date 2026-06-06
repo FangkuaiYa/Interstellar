@@ -1,4 +1,4 @@
-﻿namespace Interstellar.Server
+namespace Interstellar.Server
 {
     internal class Program
     {
@@ -23,7 +23,6 @@
                         case "-s":
                             secure = true;
                             urlPrefix = "https://";
-
                             if (!isTerminal)
                             {
                                 certPath = args[i + 1];

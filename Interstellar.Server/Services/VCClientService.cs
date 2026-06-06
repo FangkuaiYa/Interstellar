@@ -11,11 +11,8 @@ namespace Interstellar.Server.Services;
 
 internal class VCClientService : WebSocketBehavior, IMessageProcessor
 {
-    /// <summary>Global TURN server URL set by Server at startup.</summary>
     internal static string? GlobalTurnUrl;
-    /// <summary>Global TURN username.</summary>
     internal static string? GlobalTurnUser;
-    /// <summary>Global TURN password.</summary>
     internal static string? GlobalTurnPass;
 
     private RTCPeerConnection connection;
@@ -38,7 +35,7 @@ internal class VCClientService : WebSocketBehavior, IMessageProcessor
         {
             Console.WriteLine("Client " + this.ID + " ICE candidate generated.");
             var msg = new IceCandMessage(candidate.candidate, candidate.sdpMid, candidate.sdpMLineIndex, candidate.usernameFragment);
-            // Check if the socket is open (it may not be yet)
+            // Check if the WebSocket is open yet
             if (this.Context?.WebSocket?.ReadyState == WebSocketState.Open)
             {
                 SendMessage(msg);
@@ -133,7 +130,7 @@ internal class VCClientService : WebSocketBehavior, IMessageProcessor
             VCRoom room = RoomManager.GetRoom(message.Region, message.RoomCode);
             client = room.Join(this);
 
-            // Add the receive track.
+            // Add the receive track
             var format = AudioHelpers.GetOpusFormat(client.ClientId);
             var stream = new MediaStreamTrack(format, MediaStreamStatusEnum.RecvOnly);
             connection.addTrack(stream);
@@ -194,10 +191,7 @@ internal class VCClientService : WebSocketBehavior, IMessageProcessor
         return new SdpOfferMessage(offer.sdp, mask);
     }
 
-    /// <summary>
-    /// Sends the current track info to the client via an SDP offer message.
-    /// </summary>
-    /// <param name="mask"></param>
+    /// <summary>Sends current track info to the client via an SDP offer message.</summary>
     public void SendTracksMask(long mask)
     {
         if (IsJoined)
@@ -214,12 +208,7 @@ internal class VCClientService : WebSocketBehavior, IMessageProcessor
         }
     }
 
-    /// <summary>
-    /// Sends an audio frame to the client.
-    /// </summary>
-    /// <param name="id"></param>
-    /// <param name="durationRtpUnits"></param>
-    /// <param name="encodedAudio"></param>
+    /// <summary>Sends an audio frame to the client.</summary>
     public void SendAudio(int id, uint durationRtpUnits, byte[] encodedAudio)
     {
         if (audioStreams.TryGetValue(id, out var stream))
@@ -238,16 +227,10 @@ internal class VCClientService : WebSocketBehavior, IMessageProcessor
     }
     System.DateTime? lastError = null;
 
-    /// <summary>
-    /// Sends a message to the client.
-    /// </summary>
-    /// <param name="message"></param>
+    /// <summary>Sends a message to the client.</summary>
     public void SendMessage(IMessage message) => this.Send(MessagePacker.PackMessage(message).ToArray());
     
-    /// <summary>
-    /// Sends messages to the client in the given order.
-    /// </summary>
-    /// <param name="messages"></param>
+    /// <summary>Sends messages to the client in the given order.</summary>
     public void SendMessages(params IEnumerable<IMessage> messages) => this.Send(MessagePacker.PackMessages(messages).ToArray());
 
     public void SendRawMessage(byte[] message) => this.Send(message.ToArray());
