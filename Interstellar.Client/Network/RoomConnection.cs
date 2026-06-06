@@ -72,7 +72,7 @@ internal class RoomConnection : IMessageProcessor
         this.roomCode = roomCode;
         this.region = region;
 
-        this.socket = new WebSocket(url);
+        this.socket = new WebSocket(url) { Compression = WebSocketSharp.CompressionMethod.Deflate };
         if (url.StartsWith("wss:")) this.socket.SslConfiguration.EnabledSslProtocols = System.Security.Authentication.SslProtocols.Tls11 | System.Security.Authentication.SslProtocols.Tls12;
         this.socket.OnMessage += (sender, e) =>
         {
@@ -157,7 +157,6 @@ internal class RoomConnection : IMessageProcessor
         }
 
 
-        this.socket.SendMessages(new JoinMessage(roomCode, region));
         TrySendProfile();
         this.connection = new RTCPeerConnection(WebSocketHelpers.GetRTCConfiguration());
         this.connection.OnAudioFrameReceived += frame =>
@@ -171,13 +170,14 @@ internal class RoomConnection : IMessageProcessor
     }
 
     private IOpusEncoder encoder = AudioHelpers.GetOpusEncoder();
-    byte[] encodedBuffer = new byte[8192];
+    byte[] encodedBuffer = new byte[2048];
     public void SendAudio(float[] sampleBuffer, int sampleLength, double bufferMilliseconds)
     {
         if(localAudioStream == null) return;
 
         var durationRtpUnits = bufferMilliseconds.ToRtpUnits(AudioHelpers.ClockRate);
         int encodedLength = encoder.Encode(sampleBuffer, sampleLength, encodedBuffer, encodedBuffer.Length);
+        if (encodedLength <= 0) return; // Encode error or silence — skip this frame
         localAudioStream?.SendAudio(durationRtpUnits, new ArraySegment<byte>(encodedBuffer, 0, encodedLength));
     }
 

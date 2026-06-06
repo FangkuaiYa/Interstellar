@@ -97,7 +97,7 @@ internal static class CustomServerLoader
 			list.Add(new StaticHttpRegionInfo(
 				e.Name,
 				StringNames.NoTranslation,
-				"127.0.0.1",
+				e.Address,
 				new[] { new ServerInfo(e.Name + "-1", e.Address, e.Port, false) }).Cast<IRegionInfo>());
 		}
 		_regions = list.ToArray();

@@ -113,7 +113,10 @@ public class ManualMicrophone : IMicrophone
             return;
         }
 
-        context?.SendAudio(sampleBuffer, buffers, bufferMilliseconds, volume);
+        // VAD gate: skip encoding/sending when below silence threshold
+        const float SilenceThreshold = 0.005f; // -46 dBFS
+        if (level >= SilenceThreshold)
+            context?.SendAudio(sampleBuffer, buffers, bufferMilliseconds, volume);
     }
 }
 
@@ -124,7 +127,7 @@ public class WindowsMicrophone : IMicrophone
     {
         context = microphoneContext;
 
-        waveIn = new WaveInEvent() { BufferMilliseconds = 20, NumberOfBuffers = 4 };
+        waveIn = new WaveInEvent() { BufferMilliseconds = 40, NumberOfBuffers = 3 };
         waveIn.DeviceNumber = deviceNum;
         waveIn.WaveFormat = new WaveFormat(48000, 16, 1);
         waveIn.DataAvailable += SendAudio;
@@ -178,6 +181,9 @@ public class WindowsMicrophone : IMicrophone
         if (level < 0f) level = 0f;
         if (max > level) level = max;
 
-        context?.SendAudio(sampleBuffer, samples, waveIn.BufferMilliseconds, volume);
+        // VAD gate: skip encoding/sending when below silence threshold
+        const float SilenceThreshold = 0.005f; // -46 dBFS
+        if (level >= SilenceThreshold)
+            context?.SendAudio(sampleBuffer, samples, waveIn.BufferMilliseconds, volume);
     }
 }

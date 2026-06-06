@@ -22,6 +22,9 @@ internal class VCClientService : WebSocketBehavior, IMessageProcessor
     private bool IsJoined => client != null;
     private readonly ConcurrentQueue<IceCandMessage> pendingIceCandidates = new();
 
+    // SDP deduplication: skip renegotiation if the mask hasn't changed
+    private long lastSentMask = -1;
+
     public VCClientService()
     {
         connection = new(WebSocketHelpers.GetRTCConfiguration(GlobalTurnUrl, GlobalTurnUser, GlobalTurnPass));
@@ -135,7 +138,9 @@ internal class VCClientService : WebSocketBehavior, IMessageProcessor
             var stream = new MediaStreamTrack(format, MediaStreamStatusEnum.RecvOnly);
             connection.addTrack(stream);
 
-            SendMessages([new ShareIdMessage(client.ClientId), UpdateTracks(room.CurrentVoiceMask), ..client.ShareExistingProfiles()]);
+            long initMask = room.CurrentVoiceMask;
+            lastSentMask = initMask;
+            SendMessages([new ShareIdMessage(client.ClientId), UpdateTracks(initMask), ..client.ShareExistingProfiles()]);
         }
     }
 
@@ -158,7 +163,9 @@ internal class VCClientService : WebSocketBehavior, IMessageProcessor
     private void ResendConnectionInformation()
     {
         if(client == null) return;
-        SendMessages([UpdateTracks(client.Room.CurrentVoiceMask), ..client.ShareExistingProfiles()]);
+        long mask = client.Room.CurrentVoiceMask;
+        lastSentMask = mask;
+        SendMessages([UpdateTracks(mask), ..client.ShareExistingProfiles()]);
     }
 
     private SdpOfferMessage UpdateTracks(long mask)
@@ -191,13 +198,13 @@ internal class VCClientService : WebSocketBehavior, IMessageProcessor
         return new SdpOfferMessage(offer.sdp, mask);
     }
 
-    /// <summary>Sends current track info to the client via an SDP offer message.</summary>
+    /// <summary>Sends current track info to the client. Skips if mask unchanged.</summary>
     public void SendTracksMask(long mask)
     {
-        if (IsJoined)
-        {
-            SendMessage(UpdateTracks(mask));
-        }
+        if (!IsJoined) return;
+        if (mask == lastSentMask) return; // No change — skip renegotiation
+        lastSentMask = mask;
+        SendMessage(UpdateTracks(mask));
     }
 
     public void SendClientLeft(int clientId)
@@ -217,10 +224,15 @@ internal class VCClientService : WebSocketBehavior, IMessageProcessor
         }
         else
         {
-            if(!lastError.HasValue || System.DateTime.Now.Subtract(lastError.Value).Microseconds > 500)
+            if(!lastError.HasValue || System.DateTime.Now.Subtract(lastError.Value).TotalMilliseconds > 500)
             {
                 lastError = System.DateTime.Now;
-                SendMessage(UpdateTracks(client!.Room.CurrentVoiceMask));
+                long mask = client!.Room.CurrentVoiceMask;
+                if (mask != lastSentMask)
+                {
+                    lastSentMask = mask;
+                    SendMessage(UpdateTracks(mask));
+                }
                 return;
             }
         }
