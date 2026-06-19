@@ -27,9 +27,13 @@ public class ManualSpeaker : ISpeaker
 {
     private ISpeakerContext? speakerContext;
     private Action? onClosed;
+    private bool _initialized;
+    private bool _warnedNull;
+
     void ISpeaker.Initialize(ISpeakerContext speakerContext)
     {
         this.speakerContext = speakerContext;
+        _initialized = true;
     }
 
     void ISpeaker.Close()
@@ -40,6 +44,11 @@ public class ManualSpeaker : ISpeaker
     float[]? tempArray = null;
     public void Read(IList<float> buffer)
     {
+        if (!_initialized && !_warnedNull)
+        {
+            _warnedNull = true;
+            VoiceChatPlugin.InterstellarPlugin.Logger.LogWarning("[VC:Spk] ManualSpeaker.Read called before Initialize — speaker will be silent.");
+        }
         if(tempArray == null || tempArray.Length < buffer.Count) tempArray = new float[buffer.Count];
         int length = this.speakerContext?.GetEndpoint()?.Read(tempArray, 0, buffer.Count) ?? 0;
         for(int i = 0; i < buffer.Count; i++) buffer[i] = i < length ? tempArray[i] : 0f;

@@ -42,7 +42,8 @@ public class AndroidSpeaker : IDisposable
         if (_pcmCb == null)
             throw new InvalidOperationException("Failed to create IL2CPP PCM reader callback.");
 
-        _clip = AudioClip.Create("VC_Out", SampleRate / 4, Channels, SampleRate, true, _pcmCb);
+        // 40ms buffer at 48kHz stereo — matches audio frame rate, lower latency
+        _clip = AudioClip.Create("VC_Out", SampleRate * 40 / 1000, Channels, SampleRate, true, _pcmCb);
 
         _gameObject = new GameObject("VC_AndroidSpeaker");
         UnityEngine.Object.DontDestroyOnLoad(_gameObject);

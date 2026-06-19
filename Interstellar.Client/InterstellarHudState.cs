@@ -281,7 +281,7 @@ public static class InterstellarHudState
 
         var go = new GameObject("VC_ServerInfo");
         go.transform.SetParent(hud.transform, false);
-        go.transform.localPosition = new Vector3(4.2f, 0f, -10f);
+        go.transform.localPosition = new Vector3(-4.64f, -2.74f, -10f);
 
         _serverInfoText = go.AddComponent<TextMeshPro>();
         _serverInfoText.fontSize = 1.2f;

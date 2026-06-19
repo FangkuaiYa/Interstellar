@@ -16,11 +16,11 @@ static public class AudioHelpers
     static public IOpusEncoder GetOpusEncoder()
     {
         var encoder = OpusCodecFactory.CreateEncoder(48000, 1, Concentus.Enums.OpusApplication.OPUS_APPLICATION_VOIP);
-        // 8 kbps Opus — clear voice at minimal bandwidth
-        encoder.Bitrate = 8000;
+        // 24 kbps — clear voice quality at reasonable bandwidth
+        encoder.Bitrate = 24000;
         encoder.UseVBR = true;
-        // DTX: stops transmission during silence
-        encoder.UseDTX = true;
+        // DTX disabled — prevents speech cut-in at the start of utterances
+        encoder.UseDTX = false;
         // In-band FEC: mitigates packet loss without extra bandwidth
         encoder.UseInbandFEC = true;
         encoder.SignalType = Concentus.Enums.OpusSignal.OPUS_SIGNAL_VOICE;

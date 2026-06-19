@@ -136,10 +136,24 @@ internal class RoomConnection : IMessageProcessor
         float[] buffer = new float[2048];
         Dictionary<int, IOpusDecoder> decoders = new(64);
         HashSet<int> decodeErrors = new();
+        // Diagnostic: track first audio frame reception for Android debugging
+        bool firstAudioFrame = true;
+        HashSet<int> newAudioClients = new();
+
         void DecodeAndAddSample(int id, byte[] encodedAudio)
         {
             try
             {
+                if (firstAudioFrame)
+                {
+                    firstAudioFrame = false;
+                    InterstellarPlugin.Logger.LogInfo($"[VC:AudioRx] First audio frame received (client={id}, bytes={encodedAudio.Length}).");
+                }
+                if (newAudioClients.Add(id))
+                {
+                    InterstellarPlugin.Logger.LogInfo($"[VC:AudioRx] New audio source: client {id}.");
+                }
+
                 if (!decoders.ContainsKey(id)) decoders[id] = AudioHelpers.GetOpusDecoder();
 
                 var decoder = decoders[id];
@@ -148,11 +162,10 @@ internal class RoomConnection : IMessageProcessor
             }
             catch (Exception excep)
             {
-                // Opus decode errors are normal on network jitter — log once per decoder
                 if (!decodeErrors.Contains(id))
                 {
                     decodeErrors.Add(id);
-                    System.Console.WriteLine("[VC] Opus decode error for client " + id + ": " + excep.Message);
+                    InterstellarPlugin.Logger.LogWarning("[VC] Opus decode error for client " + id + ": " + excep.Message);
                 }
             }
         }
