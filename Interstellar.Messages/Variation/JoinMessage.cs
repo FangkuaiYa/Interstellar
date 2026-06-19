@@ -1,6 +1,6 @@
 ﻿using System.Diagnostics.CodeAnalysis;
 
-namespace Interstellar.Messages.Messages;
+namespace Interstellar.Messages.Variation;
 
 public class JoinMessage : IMessage
 {

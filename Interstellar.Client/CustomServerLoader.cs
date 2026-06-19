@@ -50,10 +50,6 @@ internal static class CustomServerLoader
     /// <summary>The matched VC server location, if available from the server list.</summary>
     public static string? MatchedVcLocation { get; private set; }
 
-    // ═══════════════════════════════════════════════════════════════
-    // Entry point — called by InterstellarPlugin.Load()
-    // ═══════════════════════════════════════════════════════════════
-
     internal static void Load()
     {
         // 1. Always parse the user's custom server list from config
@@ -66,10 +62,6 @@ internal static class CustomServerLoader
         // 3. Merge and build regions
         MergeAndBuildRegions();
     }
-
-    // ═══════════════════════════════════════════════════════════════
-    // Custom server list (from config JSON)
-    // ═══════════════════════════════════════════════════════════════
 
     private static void ParseCustomServers()
     {
@@ -90,10 +82,6 @@ internal static class CustomServerLoader
             InterstellarPlugin.Logger?.LogWarning($"[VC] Failed to parse custom server list: {ex.Message}");
         }
     }
-
-    // ═══════════════════════════════════════════════════════════════
-    // API fetch
-    // ═══════════════════════════════════════════════════════════════
 
     private static void FetchApiServers()
     {
@@ -123,10 +111,6 @@ internal static class CustomServerLoader
         }
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // JSON parsing helper — supports both [...] and {"servers":[...]}
-    // ═══════════════════════════════════════════════════════════════
-
     private static List<ServerEntry>? DeserializeServerList(string json)
     {
         if (json.TrimStart().StartsWith("["))
@@ -136,10 +120,7 @@ internal static class CustomServerLoader
         return root?.Servers;
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // Merge: custom servers take priority over API servers (by name)
-    // ═══════════════════════════════════════════════════════════════
-
+    // Custom servers take priority over API servers (by name)
     private static void MergeAndBuildRegions()
     {
         var merged = new List<ServerEntry>();
@@ -184,10 +165,6 @@ internal static class CustomServerLoader
         InterstellarPlugin.Logger?.LogInfo($"[VC] Total regions: {_regions.Length} (custom: {_customServers.Count}, API: {_apiServers.Count}).");
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // Public accessors
-    // ═══════════════════════════════════════════════════════════════
-
     internal static IRegionInfo[]? GetRegions() => _regions;
 
     /// <summary>
@@ -212,7 +189,6 @@ internal static class CustomServerLoader
             return FallbackVcUrl;
         }
 
-        // ── Match by region name ──
         if (_mergedServers != null)
         {
             var currentRegion = ServerManager.Instance?.CurrentRegion;
@@ -234,9 +210,7 @@ internal static class CustomServerLoader
         return FallbackVcUrl;
     }
 
-    // ═══════════════════════════════════════════════════════════════
     // Harmony Patches
-    // ═══════════════════════════════════════════════════════════════
 
     /// <summary>Skip official Auth for custom servers.</summary>
     [HarmonyPatch(typeof(AuthManager), nameof(AuthManager.CoConnect))]

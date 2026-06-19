@@ -1,6 +1,6 @@
 # Interstellar Voice Chat
 
-Real-time proximity voice chat for Among Us. Single plugin DLL + standalone server.
+Real-time proximity voice chat for Among Us. A single BepInEx plugin DLL plus a standalone relay server.
 
 ## Project Structure
 
@@ -26,18 +26,12 @@ AmongUs-VoiceChat/
 └── .github/workflows/build.yml
 ```
 
-## Quick Start
+## Build
 
-### Prerequisites
-
-- .NET 8 SDK (Server)
-- .NET 6 SDK (Client plugin)
-- 7-Zip (Windows — dependency packaging)
-
-### Build
+**Prerequisites:** .NET 8 SDK (server), .NET 6 SDK (plugin), 7-Zip (Windows — dependency packaging)
 
 ```bash
-# Plugin (two-pass: first compiles, second embeds dependencies)
+# Plugin (two-pass: first compile, second embeds dependencies)
 dotnet build Interstellar.Client/Interstellar.Client.csproj -c Release
 dotnet build Interstellar.Client/Interstellar.Client.csproj -c Release
 
@@ -45,16 +39,14 @@ dotnet build Interstellar.Client/Interstellar.Client.csproj -c Release
 dotnet publish Interstellar.Server/Interstellar.Server.csproj -c Release -o ./server
 ```
 
-### Install
-
-Copy `Interstellar.Client.dll` and its dependencies from `bin/Release/net6.0/` into `BepInEx/plugins/`.
+**Install:** Copy `Interstellar.Client.dll` and its dependencies from `bin/Release/net6.0/` into `BepInEx/plugins/`.
 
 ## Server
 
-### Run
+### Running
 
 ```bash
-# Basic (with optimal player capacity warning)
+# Basic
 dotnet run --project Interstellar.Server 0.0.0.0:22021 --optimal-players 12
 
 # With Coturn
@@ -68,77 +60,65 @@ dotnet run --project Interstellar.Server 0.0.0.0:22021 \
   -s /path/to/cert.pfx -p password
 ```
 
-### Dashboard
-
-Visit `http://your-server:22021/` — shows connected clients, active rooms, optimal player count, VC server URL, and Coturn status.
-
-| Endpoint | Response |
-|----------|----------|
-| `GET /` | HTML dashboard (optimal players, rooms, clients, VC URL) |
-| `GET /health` | `{"status":"ok"}` |
-| `GET /stats` | `{"status":"ok","clients":5,"rooms":2,"optimalPlayers":12,"serverUrl":"http://...","coturn":true,"wss":false}` |
-| `GET /api/rooms` | Full room list with player details + `optimalPlayers` / `serverUrl` |
-
 ### CLI Reference
 
 ```
 Interstellar.Server <bind_address> [options]
 
-  -s, --secure <path>         WSS certificate (.pfx)
-  -p, --password <pwd>        Certificate password
-  -t, --coturn <url>          Coturn TURN URL
-  --coturn-user <user>        TURN username
-  --coturn-pass <pass>        TURN password
-  -op, --optimal-players <n>  Optimal player count (triggers capacity warning on clients)
+  -s, --secure <path>          WSS certificate (.pfx)
+  -p, --password <pwd>         Certificate password
+  -t, --coturn <url>           Coturn TURN URL
+  --coturn-user <user>         TURN username
+  --coturn-pass <pass>         TURN password
+  -op, --optimal-players <n>   Optimal player count (triggers capacity warning)
 ```
+
+### Dashboard
+
+Visit `http://your-server:22021/`.
+
+| Endpoint | Response |
+|----------|----------|
+| `GET /` | HTML dashboard (optimal players, rooms, clients, VC URL, Coturn status) |
+| `GET /health` | `{"status":"ok"}` |
+| `GET /stats` | `{"status":"ok","clients":5,"rooms":2,"optimalPlayers":12,"serverUrl":"http://...","coturn":true,"wss":false}` |
+| `GET /api/rooms` | Full room list with player details, `optimalPlayers`, and `serverUrl` |
 
 ### Player Capacity
 
-When `--optimal-players` is set, the server sends player counts to all connected clients. If the total online count reaches the optimal value, a **full-screen popup** appears on each client:
-
-- Shows current voice server address, optimal count, and current count
-- Suggests switching servers or sponsoring a server upgrade
-- The server dashboard also displays the optimal player count
+When `--optimal-players` is set, the server broadcasts player counts to all connected clients. If the total online count reaches the optimal value, a full-screen popup warns players and suggests switching servers or sponsoring an upgrade.
 
 ## Voice Server Matching
 
-The plugin maps the current Among Us game server to a voice server URL. Server discovery has three layers:
+The plugin resolves each Among Us region to a voice server URL through three layers, applied in priority order:
 
-### 1. API Fetch (default on)
+| Priority | Source | Behavior |
+|----------|--------|----------|
+| 1 | `ForceVoiceServer` | Overrides everything — all regions use a single VC server |
+| 2 | `CustomServerListJson` | Overrides API entries with the same `name` (case-insensitive) |
+| 3 | API | Fetched from `https://api.amongusclub.cn/Interstellar/ServerList.json` at startup |
+| Fallback | `ws://47.122.116.50:22021` | Used when no match is found |
 
-Fetches `https://api.amongusclub.cn/Interstellar/ServerList.json` at startup.
+**API and custom server format:**
 
-**API format:**
 ```json
 {
   "servers": [
-    { "name": "Modded Asia (MAS)", "address": "au-as.duikbo.at", "port": 443, "vc": "ws://47.122.116.50:22021", "vcLocation": "Hong Kong" },
-    { "name": "Modded NA (MNA)",  "address": "www.aumods.us",    "port": 443, "vc": "ws://vc-na.amongusclub.cn:22021", "vcLocation": "Silicon Valley" }
+    {
+      "name": "Modded Asia (MAS)",
+      "address": "au-as.duikbo.at",
+      "port": 443,
+      "vc": "ws://47.122.116.50:22021",
+      "vcLocation": "Hong Kong"
+    }
   ]
 }
 ```
-- `vcLocation` — Human-readable server location, displayed in HUD instead of IP
 
-### 2. Custom Server List (always active)
-
-Define your own servers in the plugin config under `[VoiceChat.Server]` → `CustomServerListJson`. Same JSON format as the API. Custom servers **override** API servers with the same name. If API is disabled, only your custom list is used.
-
-### 3. Force Voice Server
-
-Set `ForceVoiceServerEnabled = true` and `ForceVoiceServerUrl` to make **all** Among Us servers use a single voice server — regardless of region.
-
-### Priority
-
-| Layer | Description |
-|-------|-------------|
-| `ForceVoiceServer` | Overrides everything — all regions share one VC server |
-| `CustomServerListJson` | Overrides API entries with same name |
-| API | Used for any server not in your custom list |
-| Fallback | `ws://47.122.116.50:22021` if nothing matches |
-
-- `name` — Among Us server region name (exact match, case-insensitive)
+- `name` — Among Us region name (exact, case-insensitive match)
 - `vc` — WebSocket URL of the voice server for that region (optional; falls back to default)
-- If a server entry has no `vc` field, the default fallback is used
+- `vcLocation` — Human-readable label shown in the HUD instead of the IP
+- Custom servers override API entries with the same `name`. If the API is disabled, only the custom list is used.
 
 ## Plugin Features
 
@@ -146,31 +126,22 @@ Set `ForceVoiceServerEnabled = true` and `ForceVoiceServerUrl` to make **all** A
 
 | Key | Function |
 |-----|----------|
-| `F1` | Toggle VC settings window (anywhere) |
-| `M` | Cycle mic: Global → Impostor Radio → Muted |
+| `F1` | Toggle VC settings window |
+| `M` | Cycle mic mode: Global → Impostor Radio → Muted |
 | `N` | Toggle speaker on/off |
 
 ### Settings UI
 
-Press `F1` or click the **VC** button in the game's Options menu to open the settings window. Two sections:
+Press `F1` or click the **VC** button in the game's Options menu to open the settings window. It has two sections:
 
 - **Personal** — Microphone device, speaker device, mic volume, master volume (device selection hidden on Android)
 - **Room** (host only) — Max chat distance, Walls Block Sound, Only Hear In Sight, Impostor Hear Ghosts, Only Ghosts Can Talk, Hear In Vent, Vent Private Chat, Comms Sabotage Mutes, Camera Can Hear, Impostor Private Radio, Only Meeting / Lobby
 
-Non-host players see room settings grayed out. All changes are saved to the BepInEx config file.
+Non-host players see room settings grayed out. All changes are persisted to the BepInEx config file.
 
-### Join Splash Screen
+### Join Overlay & Capacity Popup
 
-When joining a game room, a fade-in overlay displays:
-- Interstellar Voice Chat
-- Current voice server WebSocket address
-- Optimal player count and current online player count
-
-### Capacity Popup
-
-When the server's total online players reaches the optimal count, a full-screen popup warns players and suggests switching servers or sponsoring upgrades.
-
-**Audio effects:** spatial panning, distance attenuation, wall occlusion, ghost reverb, impostor radio distortion.
+On joining a game, a fade-in overlay shows the voice server address and current player count. When the server hits its optimal capacity, a full-screen popup warns players.
 
 ## Plugin Config
 
@@ -178,30 +149,19 @@ When the server's total online players reaches the optimal count, a full-screen 
 
 ```ini
 [VoiceChat]
-# Personal audio settings
 MicrophoneDevice =
 SpeakerDevice =
-ServerAddress =             # Override VC server URL (blank = auto-match)
+ServerAddress =             # Override VC server (blank = auto-match)
 MasterVolume = 1.0
 MicVolume = 1.0
 
 [VoiceChat.Server]
-# Fetch server list from API (disable to use only your custom list)
 UseApiServerList = true
-
-# Custom server list in JSON (same format as API). One-line JSON.
-# Custom entries override API entries with the same name.
-# Example: {"servers":[{"name":"My Server","address":"my.com","port":443,"vc":"ws://my.com:22021"}]}
-# Server entries without "vc" use the default fallback VC server.
-CustomServerListJson =
-
-# Force all Among Us servers to use a single voice server
+CustomServerListJson =      # One-line JSON; overrides API entries with the same name
 ForceVoiceServerEnabled = false
-# Voice server WebSocket URL when force is enabled
-ForceVoiceServerUrl =
+ForceVoiceServerUrl =       # VC WebSocket URL when force is enabled
 
 [VoiceChat.Room]
-# Host-only room settings (synced to all players via voice server)
 MaxChatDistance = 6
 WallsBlockSound = true
 OnlyHearInSight = false
@@ -218,7 +178,6 @@ OnlyMeetingOrLobby = false
 ## Docker
 
 ```bash
-# Edit credentials
 export COTURN_URL=turn:your-server.com:3478
 export COTURN_USER=interstellar
 export COTURN_PASS=your_secure_password
@@ -237,9 +196,10 @@ docker compose up -d
 ## CI
 
 GitHub Actions builds on push:
+
 - **Server** — single-file self-contained binaries for `linux-x64`, `linux-arm64`, `win-x64`, `osx-x64`
 - **Client** — plugin DLL
-- On tag push → draft GitHub Release with all artifacts
+- Tag pushes trigger a draft GitHub Release with all artifacts.
 
 ## Credits
 

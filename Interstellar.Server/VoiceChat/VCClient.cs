@@ -65,7 +65,6 @@ internal class VCClient
         myRoom.BroadcastRawMessage(ClientId, message.ToArray());
     }
 
-    /// <summary>Sends audio to this client.</summary>
     public void SendAudio(int id, uint durationRtpUnits, byte[] encodedAudio)
     {
         this.service.SendAudio(id, durationRtpUnits, encodedAudio);
@@ -97,7 +96,6 @@ internal class VCClient
         return false;
     }
 
-    /// <summary>Disconnects from this client.</summary>
     public void Close()
     {
         myRoom.Leave(this);

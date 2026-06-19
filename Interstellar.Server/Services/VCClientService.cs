@@ -1,5 +1,4 @@
 ﻿using Interstellar.Messages;
-using Interstellar.Messages.Messages;
 using Interstellar.Messages.Variation;
 using Interstellar.Server.VoiceChat;
 using SIPSorcery.Net;
@@ -247,10 +246,8 @@ internal class VCClientService : WebSocketBehavior, IMessageProcessor
     }
     System.DateTime? lastError = null;
 
-    /// <summary>Sends a message to the client.</summary>
     public void SendMessage(IMessage message) => this.Send(MessagePacker.PackMessage(message).ToArray());
-    
-    /// <summary>Sends messages to the client in the given order.</summary>
+
     public void SendMessages(params IEnumerable<IMessage> messages) => this.Send(MessagePacker.PackMessages(messages).ToArray());
 
     public void SendRawMessage(byte[] message) => this.Send(message.ToArray());

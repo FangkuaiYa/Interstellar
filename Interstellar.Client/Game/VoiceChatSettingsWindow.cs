@@ -6,55 +6,36 @@ using static VoiceChatPlugin.VoiceChat.TranslationHelper;
 
 namespace VoiceChatPlugin.VoiceChat;
 
-/// <summary>
-/// IMGUI-based settings window for Interstellar Voice Chat.
-/// Renders Stereo-style: bold centered section headers, box-wrapped setting groups,
-/// scroll view, toggles, sliders, and device cycle selectors.
-/// </summary>
 public class VoiceChatSettingsWindow : MonoBehaviour
 {
-    // ── Public toggle ─────────────────────────────────────────────────────
-
     public bool ShowWindow { get; private set; }
 
-    /// <summary>Toggles the window and refreshes device caches if opening.</summary>
     public void Toggle()
     {
         ShowWindow = !ShowWindow;
         if (ShowWindow)
         {
             _needsDeviceRefresh = true;
-
-            // Auto-close the vanilla game settings when VC settings open
             var opt = UnityEngine.Object.FindObjectOfType<OptionsMenuBehaviour>();
             if (opt) opt.Close();
         }
     }
 
-    /// <summary>Closes the window without side effects.</summary>
     public void Close()
     {
         ShowWindow = false;
     }
 
-    // ── IMGUI state ───────────────────────────────────────────────────────
-
     private Vector2 _scrollPosition;
     private bool _needsDeviceRefresh = true;
 
-    // ── Keyboard shortcut ─────────────────────────────────────────────────
-    // F1 toggles the settings window. Change this key if it conflicts.
-
+    // F1 toggles the settings window
     private const KeyCode ToggleKey = KeyCode.F1;
-
-    // ── Styles (built once in Awake) ───────────────────────────────────────
 
     private GUIStyle? _sectionLabelStyle;
     private GUIStyle? _boxStyle;
     private GUIStyle? _titleStyle;
     private bool _stylesBuilt;
-
-    // ── Lifecycle ─────────────────────────────────────────────────────────
 
     void Awake()
     {
@@ -76,7 +57,6 @@ public class VoiceChatSettingsWindow : MonoBehaviour
     {
         if (!ShowWindow) return;
 
-        // Refresh device caches only when the window first opens (not every frame!)
         if (_needsDeviceRefresh)
         {
             VoiceChatConfig.RefreshDeviceCaches();
@@ -90,7 +70,6 @@ public class VoiceChatSettingsWindow : MonoBehaviour
         float x = (Screen.width - winW) / 2f;
         float y = (Screen.height - winH) / 2f;
 
-        // Dark backdrop
         var oldColor = GUI.color;
         GUI.color = new Color(0.04f, 0.05f, 0.08f, 0.95f);
         GUI.Box(new Rect(x - 4, y - 4, winW + 8, winH + 8), "");
@@ -100,7 +79,6 @@ public class VoiceChatSettingsWindow : MonoBehaviour
 
         GUILayout.BeginArea(new Rect(x + 10, y + 8, winW - 20, winH - 16));
         {
-            // ── Title bar ──
             GUILayout.BeginHorizontal();
             GUILayout.Label($"<b>{Get("vc.settings.title", "Voice Chat")}</b>", _titleStyle);
             GUILayout.FlexibleSpace();
@@ -112,7 +90,6 @@ public class VoiceChatSettingsWindow : MonoBehaviour
 
             GUILayout.Space(5f);
 
-            // ── Scrollable content ──
             _scrollPosition = GUILayout.BeginScrollView(_scrollPosition, GUILayout.Height(winH - 50f));
             {
                 bool isHost = AmongUsClient.Instance?.AmHost ?? false;
@@ -126,8 +103,6 @@ public class VoiceChatSettingsWindow : MonoBehaviour
         }
         GUILayout.EndArea();
     }
-
-    // ── Style builder ─────────────────────────────────────────────────────
 
     void BuildStyles()
     {
@@ -144,13 +119,7 @@ public class VoiceChatSettingsWindow : MonoBehaviour
 
         _boxStyle = new GUIStyle(GUI.skin.box)
         {
-            padding = new RectOffset
-            {
-                top = 5,
-                bottom = 10,
-                left = 10,
-                right = 10,
-            },
+            padding = new RectOffset { top = 5, bottom = 10, left = 10, right = 10 },
         };
 
         _titleStyle = new GUIStyle(GUI.skin.label)
@@ -161,8 +130,6 @@ public class VoiceChatSettingsWindow : MonoBehaviour
         _titleStyle.normal.textColor = new Color(0.55f, 0.70f, 0.90f);
     }
 
-    // ── Personal section ──────────────────────────────────────────────────
-
     void RenderPersonalSection()
     {
         GUILayout.Label(Get("vc.settings.personal", "Personal"), _sectionLabelStyle);
@@ -171,7 +138,6 @@ public class VoiceChatSettingsWindow : MonoBehaviour
 
         if (showDevices)
         {
-            // Microphone device cycle
             RenderDeviceCycle(
                 Get("vc.settings.microphone", "Microphone"),
                 VoiceChatConfig.MicrophoneDevice,
@@ -182,7 +148,6 @@ public class VoiceChatSettingsWindow : MonoBehaviour
                     VoiceChatRoom.Current?.SetMicrophone(v);
                 });
 
-            // Speaker device cycle
             RenderDeviceCycle(
                 Get("vc.settings.speaker", "Speaker"),
                 VoiceChatConfig.SpeakerDevice,
@@ -195,21 +160,18 @@ public class VoiceChatSettingsWindow : MonoBehaviour
         }
         else
         {
-            // Android / unsupported platform — device selection unavailable
             GUILayout.BeginVertical(_boxStyle);
             GUILayout.Label(Get("vc.settings.noDeviceSupport", "Device selection not supported on this platform."),
                 new GUIStyle(GUI.skin.label) { normal = new GUIStyleState { textColor = Color.gray }, wordWrap = true });
             GUILayout.EndVertical();
         }
 
-        // Mic Volume slider
         RenderSlider(Get("vc.settings.micVolume", "Mic Volume"), 0.1f, 2f, VoiceChatConfig.MicVolume, v =>
         {
             VoiceChatConfig.SetMicVolume(v);
             VoiceChatRoom.Current?.SetMicVolume(v);
         });
 
-        // Master Volume slider
         RenderSlider(Get("vc.settings.masterVolume", "Master Volume"), 0.1f, 2f, VoiceChatConfig.MasterVolume, v =>
         {
             VoiceChatConfig.SetMasterVolume(v);
@@ -217,9 +179,6 @@ public class VoiceChatSettingsWindow : MonoBehaviour
         });
     }
 
-    // ── Room section ──────────────────────────────────────────────────────
-
-    // Static descriptor array — allocated once, not every OnGUI frame
     private static readonly (string label, Func<bool> getter, Action<bool> setter)[] RoomBoolSettings = new (string, Func<bool>, Action<bool>)[]
     {
         (Get("vc.settings.wallsBlockSound", "Walls Block Sound"),          () => VoiceChatConfig.SyncedRoomSettings.WallsBlockSound,       v => VoiceChatConfig.SetHostWallsBlockSound(v)),
@@ -238,14 +197,12 @@ public class VoiceChatSettingsWindow : MonoBehaviour
     {
         GUILayout.Label(Get("vc.settings.room", "Room"), _sectionLabelStyle);
 
-        // Shared change handler for all room settings
         void RoomChanged()
         {
             VoiceChatConfig.ApplyLocalHostSettingsToSynced();
             InterstellarHudState.MarkRoomSettingsDirty();
         }
 
-        // Max Chat Distance
         {
             GUI.enabled = isHost;
             RenderSlider(Get("vc.settings.maxChatDistance", "Max Chat Distance"), 1.5f, 20f,
@@ -259,7 +216,6 @@ public class VoiceChatSettingsWindow : MonoBehaviour
             GUI.enabled = true;
         }
 
-        // Boolean toggles
         foreach (var bs in RoomBoolSettings)
         {
             GUI.enabled = isHost;
@@ -275,11 +231,7 @@ public class VoiceChatSettingsWindow : MonoBehaviour
         }
     }
 
-    // ── Control builders ──────────────────────────────────────────────────
-
-    /// <summary>Renders a ◄ value ► cycle selector inside a box group.</summary>
-    void RenderDeviceCycle(string label, string currentValue, List<string> options,
-        Action<string> onChange)
+    void RenderDeviceCycle(string label, string currentValue, List<string> options, Action<string> onChange)
     {
         GUILayout.BeginVertical(_boxStyle);
         {
@@ -291,7 +243,6 @@ public class VoiceChatSettingsWindow : MonoBehaviour
                 ? Get("vc.settings.defaultDevice", "Default")
                 : Truncate(currentValue, 20);
 
-            // Only process on the actual click frame (EventType.Used), not held repeats
             if (GUILayout.Button("◄", GUILayout.Width(24f)))
             {
                 if (Event.current.type == EventType.Used)
@@ -314,9 +265,7 @@ public class VoiceChatSettingsWindow : MonoBehaviour
         GUILayout.EndVertical();
     }
 
-    /// <summary>Renders a labeled HorizontalSlider with value readout inside a box group.</summary>
-    void RenderSlider(string label, float min, float max, float value,
-        Action<float> onChange)
+    void RenderSlider(string label, float min, float max, float value, Action<float> onChange)
     {
         GUILayout.BeginVertical(_boxStyle);
         {
@@ -331,7 +280,6 @@ public class VoiceChatSettingsWindow : MonoBehaviour
 
             GUILayout.EndHorizontal();
 
-            // Apply change only when slider actually moved
             if (Math.Abs(newVal - value) > 0.001f)
             {
                 float clamped = Mathf.Clamp((float)Math.Round(newVal, 2), min, max);
@@ -341,7 +289,6 @@ public class VoiceChatSettingsWindow : MonoBehaviour
         GUILayout.EndVertical();
     }
 
-    /// <summary>Renders a single toggle inside a box group.</summary>
     void RenderToggle(string label, bool value, Action<bool> onChange)
     {
         GUILayout.BeginVertical(_boxStyle);
@@ -353,10 +300,8 @@ public class VoiceChatSettingsWindow : MonoBehaviour
         GUILayout.EndVertical();
     }
 
-    // ── Helpers ───────────────────────────────────────────────────────────
-
     static string Truncate(string s, int max)
-        => s.Length <= max ? s : s[..(max - 1)] + "…"; // …
+        => s.Length <= max ? s : s[..(max - 1)] + "…";
 
     void OnSceneLoaded(Scene _, LoadSceneMode __)
     {

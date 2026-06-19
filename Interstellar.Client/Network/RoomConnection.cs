@@ -1,6 +1,5 @@
 ﻿using Concentus;
 using Interstellar.Messages;
-using Interstellar.Messages.Messages;
 using Interstellar.Messages.Variation;
 using NAudio.Wave;
 using SIPSorcery.Net;
@@ -25,28 +24,21 @@ internal interface IConnectionContext
     /// <summary>
     /// Called when a client disconnects.
     /// </summary>
-    /// <param name="clientId"></param>
     void OnClientDisconnected(int clientId); 
 
     /// <summary>
     /// Called when a client profile is updated.
     /// </summary>
-    /// <param name="clientId"></param>
-    /// <param name="playerName"></param>
-    /// <param name="playerId"></param>
     void OnClientProfileUpdated(int clientId, string playerName, byte playerId);
 
     /// <summary>
     /// Called when a mute status update is received.
     /// </summary>
-    /// <param name="clientId"></param>
-    /// <param name="isMute"></param>
     void OnReceiveMuteStatus(int clientId, bool isMute);
 
     /// <summary>
     /// Called when a custom message is received.
     /// </summary>
-    /// <param name="message"></param>
     void OnCustomMessageReceived(byte[] message);
 
     /// <summary>
@@ -109,8 +101,6 @@ internal class RoomConnection : IMessageProcessor
     /// <summary>
     /// Updates the player's in-game profile information.
     /// </summary>
-    /// <param name="playerName"></param>
-    /// <param name="playerId"></param>
     public void UpdateProfile(string playerName, byte playerId)
     {
         var message = new ProfileMessage(playerName, playerId);

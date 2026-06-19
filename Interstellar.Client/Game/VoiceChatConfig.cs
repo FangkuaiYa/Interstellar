@@ -29,8 +29,6 @@ public static class VoiceChatConfig
     public static bool HostImpostorPrivateRadio => _hostImpRadio?.Value ?? false;
     public static bool HostOnlyMeetingOrLobby => _hostMeetingOnly?.Value ?? false;
 
-    // ── Server configuration ──────────────────────────────────────────
-
     /// <summary>Whether to fetch server list from the API.</summary>
     public static bool UseApiServerList => _useApiServerList?.Value ?? true;
 

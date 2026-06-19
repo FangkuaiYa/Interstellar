@@ -62,7 +62,7 @@ internal static class InterstellarRoomDriver
 
         if (VoiceChatRoom.Current == null) return;
 
-        // ── IntroCutscene ended → Rejoin to re-sync profiles ───────
+        // IntroCutscene ended → Rejoin to re-sync profiles
         bool inIntro = IntroCutscene.Instance != null;
         if (_wasInIntro && !inIntro)
         {
@@ -73,7 +73,7 @@ internal static class InterstellarRoomDriver
         }
         _wasInIntro = inIntro;
 
-        // ── EndGame started → Rejoin ───────────────────────────────
+        // EndGame started → Rejoin
         bool inEndGame = Object.FindObjectOfType<EndGameManager>() != null;
         if (inEndGame && !_wasInEndGame)
         {
@@ -83,7 +83,6 @@ internal static class InterstellarRoomDriver
         }
         _wasInEndGame = inEndGame;
 
-        // ── Per-frame ─────────────────────────────────────────────────
         InterstellarHudState.TrySyncHostRoomSettings();
 
         try { VoiceChatRoom.Current.Update(); }

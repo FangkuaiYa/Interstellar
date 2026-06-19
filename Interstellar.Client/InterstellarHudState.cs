@@ -303,7 +303,6 @@ public static class InterstellarHudState
         int opt = VoiceChatServerState.OptimalPlayers;
         bool atCap = VoiceChatServerState.IsAtCapacity;
 
-        // Show location name if available, otherwise fall back to shortened server address
         string label = CustomServerLoader.MatchedVcLocation
             ?? ShortenServerUrl(VoiceChatServerState.VoiceServerUrl);
 

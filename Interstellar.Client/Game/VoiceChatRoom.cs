@@ -61,7 +61,6 @@ public class VoiceChatRoom
         Current = null;
     }
 
-    // ── Constructor ────────────────────────────────────────────────────
     private VoiceChatRoom(string region, string roomCode)
     {
         SimpleRouter source = new();
@@ -158,7 +157,6 @@ public class VoiceChatRoom
         InterstellarPlugin.Logger.LogInfo("[VC] VoiceChatRoom constructed (Interstellar transport).");
     }
 
-    // ── Device control ─────────────────────────────────────────────────
     public void SetMasterVolume(float v) => _masterVolumeProperty.Volume = v;
     public void SetMicVolume(float v) => _interstellar.Microphone?.SetVolume(v);
     public void SetLoopBack(bool lb) => _interstellar.SetLoopBack(lb);
@@ -245,7 +243,6 @@ public class VoiceChatRoom
         }
     }
 
-    // ── Per-frame Update ───────────────────────────────────────────────
     public void Update()
     {
         _androidMic?.Update();
@@ -302,7 +299,6 @@ public class VoiceChatRoom
         return false;
     }
 
-    // ── Lifecycle ──────────────────────────────────────────────────────
     public void Rejoin()
     {
         _interstellar.Rejoin();
@@ -331,7 +327,6 @@ public class VoiceChatRoom
         return false;
     }
 
-    // ── Profile ────────────────────────────────────────────────────────
     private byte _lastId = byte.MaxValue;
     private string _lastName = null!;
 
@@ -350,7 +345,6 @@ public class VoiceChatRoom
         _interstellar.UpdateProfile(_lastName, _lastId);
     }
 
-    // ── Utilities ──────────────────────────────────────────────────────
     internal static float GetVolume(float dist, float maxDist)
         => Math.Clamp(1f - dist / maxDist, 0f, 1f);
 

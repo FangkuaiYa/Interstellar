@@ -20,7 +20,7 @@ internal class ReverbSampleProvider : ISampleProvider
     public WaveFormat WaveFormat => sourceProvider.WaveFormat;
 
     /// <summary>
-    /// リバーブ効果を追加するSampleProvider
+    /// Adds a reverb/delay effect to the audio signal.
     /// </summary>
     /// <param name="sourceProvider">Input audio source.</param>
     /// <param name="delayMilliseconds">Delay in milliseconds.</param>

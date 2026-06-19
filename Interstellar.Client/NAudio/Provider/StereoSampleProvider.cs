@@ -22,7 +22,7 @@ internal class StereoSampleProvider : ISampleProvider
             lock (panLock) return pan;
         } set { 
             lock (panLock) pan = Math.Clamp(value, -1.0f, 1.0f);
-        } } // -1.0 (左) から 1.0 (右)
+        } } // -1.0 (left) to 1.0 (right)
     private int lastLDelay = 0;
     private int lastRDelay = 0;
     public float Volume { get; set; } = 1.0f;
@@ -50,13 +50,13 @@ internal class StereoSampleProvider : ISampleProvider
 
         for (int i = 0; i < monoCount; i++)
         {
-            int lIndex = i * lCount / monoCount;//lastBufferに含まれる遅延分を含めた添え字
+            int lIndex = i * lCount / monoCount; // Index including delay offset from lastBuffer
             if (lIndex < lastLDelay)
                 buffer[offset + i * 2] = lastBuffer[lastBufferCount - lastLDelay + lIndex] * lVol;
             else
                 buffer[offset + i * 2] = tempBuffer[lIndex - lastLDelay] * lVol;
 
-            int rIndex = i * rCount / monoCount;//lastBufferに含まれる遅延分を含めた添え字
+            int rIndex = i * rCount / monoCount; // Index including delay offset from lastBuffer
             if (rIndex < lastRDelay)
                 buffer[offset + i * 2 + 1] = lastBuffer[lastBufferCount - lastRDelay + rIndex] * rVol;
             else
@@ -66,7 +66,7 @@ internal class StereoSampleProvider : ISampleProvider
         lastLDelay = lDelay;
         lastRDelay = rDelay;
 
-        //配列を入れ替える
+        // Swap arrays
         var temp = lastBuffer;
         lastBuffer = tempBuffer;
         tempBuffer = temp;

@@ -24,8 +24,6 @@ public static class VoiceVolumeMenu
     private const float VMin = 0f;
     private const float VMax = 2f;
 
-    // ── Prefab setup ────────────────────────────────────────────────────
-
     [HarmonyPatch(typeof(MainMenuManager), nameof(MainMenuManager.Start))]
     [HarmonyPostfix]
     static void MainMenuManager_Start()
@@ -60,8 +58,6 @@ public static class VoiceVolumeMenu
         }
     }
 
-    // ── Toggle / lifecycle ──────────────────────────────────────────────
-
     public static void Toggle()
     {
         if (!_popUp) Build();
@@ -89,8 +85,6 @@ public static class VoiceVolumeMenu
     {
         if (_popUp) _popUp.SetActive(false);
     }
-
-    // ── Build popup shell (clone OptionsMenuBehaviour) ───────────────────
 
     private static void Build()
     {
@@ -139,8 +133,6 @@ public static class VoiceVolumeMenu
         t.sortingOrder = 32767;
     }
 
-    // ── Refresh rows ─────────────────────────────────────────────────────
-
     private static void RefreshRows()
     {
         if (!_popUp || !_btnPrefab) return;
@@ -187,8 +179,6 @@ public static class VoiceVolumeMenu
             pb.OnClick = new ButtonClickedEvent();
         }
     }
-
-    // ── One player row ───────────────────────────────────────────────────
 
     private static void BuildRow(Transform parent, PlayerEntry entry, float y)
     {
@@ -308,8 +298,6 @@ public static class VoiceVolumeMenu
         divSr.sortingOrder = 32766;
     }
 
-    // ── Volume logic ─────────────────────────────────────────────────────
-
     private static float GetVolume(PlayerEntry entry)
     {
         if (VoiceChatRoom.Current != null)
@@ -326,8 +314,6 @@ public static class VoiceVolumeMenu
                 if (c.PlayerName == entry.Name || c.PlayerId == entry.PlayerId)
                 { c.SetVolume(v); break; }
     }
-
-    // ── Data ─────────────────────────────────────────────────────────────
 
     private record PlayerEntry(byte PlayerId, string Name, Color Color);
 
@@ -367,8 +353,6 @@ public static class VoiceVolumeMenu
         int cid = pc.Data.DefaultOutfit.ColorId;
         return cid >= 0 && cid < Palette.PlayerColors.Length ? Palette.PlayerColors[cid] : Color.white;
     }
-
-    // ── Helpers ──────────────────────────────────────────────────────────
 
     private static void SmallBtn(string label, Vector3 pos, Action onClick)
     {

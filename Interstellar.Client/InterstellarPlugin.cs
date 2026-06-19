@@ -49,7 +49,6 @@ public class InterstellarPlugin : BasePlugin
         VoiceChatConfig.Init(Config);
         TranslationHelper.Load();
         CustomServerLoader.Load();
-        // Options.SetupCustomSettings(); // TODO: re-implement without Reactor
 
         VCManager.RegisterSceneHook();
         InterstellarHudState.Init();

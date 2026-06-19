@@ -44,7 +44,6 @@ public static class SplashScreenPatch
             stream.CopyTo(ms);
             tex.LoadImage(ms.ToArray(), false);
 
-            // 1024x1024 logo at 350 PPU → ~2.9 world units wide
             _logoSprite = Sprite.Create(tex,
                 new Rect(0, 0, tex.width, tex.height),
                 new Vector2(0.5f, 0.5f), 350f);
@@ -66,8 +65,6 @@ public static class SplashScreenPatch
             InterstellarPlugin.Logger.LogWarning("[VC] No main camera for splash screen.");
             yield break;
         }
-
-        // ── Build overlay hierarchy (parented to camera for reliable positioning) ──
 
         var overlay = new GameObject("VC_SplashOverlay");
         overlay.transform.SetParent(cam.transform, false);
@@ -111,7 +108,7 @@ public static class SplashScreenPatch
         textTmp.color = new Color(1f, 1f, 1f, 0f);
         textTmp.sortingOrder = 32767;
 
-        // ── Fade in (0.5s) ──
+        // Fade in (0.5s)
         const float fadeInDuration = 0.5f;
         var elapsed = 0f;
         while (elapsed < fadeInDuration)
@@ -128,10 +125,10 @@ public static class SplashScreenPatch
         logoSr.color = Color.white;
         textTmp.color = new Color(1f, 1f, 1f, 0.7f);
 
-        // ── Hold (1.5s) ──
+        // Hold (1.5s)
         yield return new WaitForSeconds(1.5f);
 
-        // ── Fade out (1.0s) ──
+        // Fade out (1.0s)
         const float fadeOutDuration = 1.0f;
         elapsed = 0f;
         var startBg = bgSr.color;
@@ -148,7 +145,6 @@ public static class SplashScreenPatch
             yield return null;
         }
 
-        // ── Cleanup ──
         Object.Destroy(overlay);
         Object.Destroy(logoGo);
         Object.Destroy(textGo);

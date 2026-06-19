@@ -62,7 +62,6 @@ public static class JoinSplashScreen
             yield break;
         }
 
-        // ── Build overlay ──
         var overlay = new GameObject("VC_JoinSplashOverlay");
         overlay.transform.SetParent(cam.transform, false);
         overlay.transform.localPosition = new Vector3(0f, 0f, 3f);
@@ -74,7 +73,6 @@ public static class JoinSplashScreen
         bgSr.sortingOrder = 32766;
         bgSr.color = Color.clear;
 
-        // ── Text ──
         var textGo = new GameObject("VC_JoinSplashText");
         textGo.transform.SetParent(cam.transform, false);
         textGo.transform.localPosition = new Vector3(0f, 0f, 3.1f);
@@ -89,7 +87,7 @@ public static class JoinSplashScreen
 
         textTmp.text = BuildSplashText();
 
-        // ── Fade in (0.4s) ──
+        // Fade in (0.4s)
         const float fadeInDuration = 0.4f;
         var elapsed = 0f;
         while (elapsed < fadeInDuration)
@@ -104,7 +102,7 @@ public static class JoinSplashScreen
         bgSr.color = new Color(0f, 0f, 0f, 0.88f);
         textTmp.color = new Color(1f, 1f, 1f, 0.8f);
 
-        // ── Hold (2.5s) — poll for ServerInfo arrival and update text ──
+        // Hold (2.5s) — poll for ServerInfo arrival and update text
         var holdEnd = Time.time + 2.5f;
         var hadInfo = VoiceChatServerState.HasInfo;
         while (Time.time < holdEnd)
@@ -117,7 +115,7 @@ public static class JoinSplashScreen
             yield return null;
         }
 
-        // ── Fade out (0.8s) ──
+        // Fade out (0.8s)
         const float fadeOutDuration = 0.8f;
         elapsed = 0f;
         var startBg = bgSr.color;
@@ -131,7 +129,6 @@ public static class JoinSplashScreen
             yield return null;
         }
 
-        // ── Cleanup ──
         Object.Destroy(overlay);
         Object.Destroy(textGo);
         _isShowing = false;
@@ -175,7 +172,5 @@ public static class JoinSplashScreen
         return _solidSprite;
     }
 
-    // No longer needed — we use the persistent VoiceChatSettingsWindow MonoBehaviour
-    // ClassInjector registration kept for backwards compat
     public class SplashCoroutineRunner : MonoBehaviour { }
 }

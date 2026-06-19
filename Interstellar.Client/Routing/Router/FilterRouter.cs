@@ -96,7 +96,7 @@ public class FilterRouter : AbstractAudioRouter
     }
 
     /// <summary>
-    /// 
+    /// Creates a band-pass filter centered at the given frequency.
     /// </summary>
     /// <param name="centerFrequency">Center frequency in Hz.</param>
     /// <param name="qFactor">Q factor (resonance).</param>

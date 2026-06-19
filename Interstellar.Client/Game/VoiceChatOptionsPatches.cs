@@ -11,22 +11,16 @@ namespace VoiceChatPlugin.VoiceChat;
 [HarmonyPatch]
 public static class VoiceChatSettingsMenu
 {
-    // ── Initialisation ────────────────────────────────────────────────────
-
     static VoiceChatSettingsMenu()
     {
         Il2CppInterop.Runtime.Injection.ClassInjector.RegisterTypeInIl2Cpp<VoiceChatSettingsWindow>();
         Il2CppInterop.Runtime.Injection.ClassInjector.RegisterTypeInIl2Cpp<JoinSplashScreen.SplashCoroutineRunner>();
 
-        // On first scene load: create host GameObject + pre-cache devices.
-        // On every scene change: auto-close settings.
         SceneManager.sceneLoaded += (Action<Scene, LoadSceneMode>)((_, __) =>
         {
             Window?.Close();
         });
     }
-
-    // ── Singleton accessor (creates host GameObject on first access) ──────
 
     private static VoiceChatSettingsWindow? _window;
     private static VoiceChatSettingsWindow? Window
@@ -38,20 +32,15 @@ public static class VoiceChatSettingsMenu
                 _window = Object.FindObjectOfType<VoiceChatSettingsWindow>();
                 if (!_window)
                 {
-                    // Lazy-create: first access after plugin load, Unity is definitely ready
                     var hostGO = new GameObject("VC_SettingsHost");
                     Object.DontDestroyOnLoad(hostGO);
                     _window = hostGO.AddComponent<VoiceChatSettingsWindow>();
-
-                    // Pre-cache audio device list once (blocking NAudio call, runs only once)
                     VoiceChatConfig.RefreshDeviceCaches();
                 }
             }
             return _window;
         }
     }
-
-    // ── Harmony: add "VC" button to the options menu ──────────────────────
 
     [HarmonyPatch(typeof(OptionsMenuBehaviour), nameof(OptionsMenuBehaviour.Start))]
     [HarmonyPostfix]
@@ -82,8 +71,6 @@ public static class VoiceChatSettingsMenu
         btn.OnClick = new UnityEngine.UI.Button.ButtonClickedEvent();
         btn.OnClick.AddListener((Action)Open);
     }
-
-    // ── Open / toggle ─────────────────────────────────────────────────────
 
     static void Open()
     {
