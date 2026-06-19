@@ -455,7 +455,7 @@ public static class InterstellarHudState
     }
 
     /// <summary>Loads a sprite with a specific pixels-per-unit value (like TOR's helper).</summary>
-    private static Sprite? LoadSpriteFromResources(string path, float pixelsPerUnit)
+    public static Sprite? LoadSpriteFromResources(string path, float pixelsPerUnit)
     {
         var key = path + "@" + pixelsPerUnit;
         if (_spriteCache.TryGetValue(key, out var cached)) return cached;
