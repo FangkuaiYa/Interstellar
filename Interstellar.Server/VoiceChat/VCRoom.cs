@@ -108,11 +108,9 @@ internal class VCRoom
 
     public void Broadcast(byte sender, IMessage message)
     {
-        // Pack once, send to all — avoids re-serializing the same message per recipient
-        var packed = MessagePacker.PackMessage(message).ToArray();
         foreach (var client in fastClients.Values)
         {
-            if (client.ClientId != sender) client.Send(packed);
+            if (client.ClientId != sender) client.Send(message);
         }
     }
 

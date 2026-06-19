@@ -53,6 +53,11 @@ internal interface IConnectionContext
     /// Called when host room settings are received from the server.
     /// </summary>
     void OnHostSettingsReceived(HostSettingsMessage settings);
+
+    /// <summary>
+    /// Called when server info is received (optimal players, current count, VC URL).
+    /// </summary>
+    void OnServerInfoReceived(ServerInfoMessage message);
 }
 
 /// <summary>
@@ -222,6 +227,10 @@ internal class RoomConnection : IMessageProcessor
             case MessageTag.HostSettings:
                 var hostSettings = HostSettingsMessage.DeserializeWithoutTag(bytes, out read);
                 context.OnHostSettingsReceived(hostSettings);
+                break;
+            case MessageTag.ServerInfo:
+                var serverInfo = ServerInfoMessage.DeserializeWithoutTag(bytes, out read);
+                context.OnServerInfoReceived(serverInfo);
                 break;
         }
         return read;

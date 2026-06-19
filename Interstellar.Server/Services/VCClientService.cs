@@ -125,6 +125,9 @@ internal class VCClientService : WebSocketBehavior, IMessageProcessor
                 var hostSettings = HostSettingsMessage.DeserializeWithoutTag(bytes, out read);
                 client?.BroadcastHostSettings(hostSettings);
                 break;
+            case MessageTag.ServerInfo:
+                read = 0; // Server sends this, never receives — ignore
+                break;
         }
         return read;
     }
@@ -145,6 +148,9 @@ internal class VCClientService : WebSocketBehavior, IMessageProcessor
             long initMask = room.CurrentVoiceMask;
             lastSentMask = initMask;
             SendMessages([new ShareIdMessage(client.ClientId), UpdateTracks(initMask), ..client.ShareExistingProfiles()]);
+
+            SendServerInfo();
+            BroadcastServerInfo(room);
         }
     }
 
@@ -232,11 +238,9 @@ internal class VCClientService : WebSocketBehavior, IMessageProcessor
             {
                 lastError = System.DateTime.Now;
                 long mask = client!.Room.CurrentVoiceMask;
-                if (mask != lastSentMask)
-                {
-                    lastSentMask = mask;
-                    SendMessage(UpdateTracks(mask));
-                }
+                // Always resend on error — the stream is missing regardless of mask change
+                lastSentMask = mask;
+                SendMessage(UpdateTracks(mask));
                 return;
             }
         }
@@ -250,4 +254,27 @@ internal class VCClientService : WebSocketBehavior, IMessageProcessor
     public void SendMessages(params IEnumerable<IMessage> messages) => this.Send(MessagePacker.PackMessages(messages).ToArray());
 
     public void SendRawMessage(byte[] message) => this.Send(message.ToArray());
+
+    /// <summary>Sends ServerInfo to this specific client.</summary>
+    public void SendServerInfo()
+    {
+        var vcUrl = Server.ServerUrl.Replace("http://", "ws://").Replace("https://", "wss://") + "/vc";
+        var msg = new ServerInfoMessage(
+            Server.OptimalPlayerCount,
+            RoomManager.TotalClientCount,
+            vcUrl);
+        SendMessage(msg);
+    }
+
+    /// <summary>Broadcasts updated ServerInfo to all clients in the room.</summary>
+    public static void BroadcastServerInfo(VCRoom room)
+    {
+        var vcUrl = Server.ServerUrl.Replace("http://", "ws://").Replace("https://", "wss://") + "/vc";
+        var msg = new ServerInfoMessage(
+            Server.OptimalPlayerCount,
+            RoomManager.TotalClientCount,
+            vcUrl);
+        foreach (var c in room.Clients)
+            c.Send(msg);
+    }
 }

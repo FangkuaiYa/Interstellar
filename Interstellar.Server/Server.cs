@@ -9,9 +9,16 @@ namespace Interstellar.Server;
 
 internal class Server
 {
+    public static int OptimalPlayerCount { get; private set; }
+    public static string ServerUrl { get; private set; } = "";
+
     static public void StartServer(string url, bool secure, string? certPath, string? password,
-                                    string? turnUrl = null, string? turnUser = null, string? turnPass = null)
+                                    string? turnUrl = null, string? turnUser = null, string? turnPass = null,
+                                    int optimalPlayers = 0)
     {
+        OptimalPlayerCount = optimalPlayers;
+        ServerUrl = url;
+
         // Pass TURN config to the WebSocket service
         VCClientService.GlobalTurnUrl = turnUrl;
         VCClientService.GlobalTurnUser = turnUser;
@@ -159,9 +166,11 @@ internal class Server
   <div class='big-num'><div class='num' id='clients'>—</div><div class='label'>Online Players</div></div>
   <div class='info'>
     <div class='info-card'><span class='k'>Active Rooms</span><span class='v' id='rooms' style='color:#58a6ff'>—</span></div>
+    <div class='info-card'><span class='k'>Optimal Players</span><span class='v' id='optimal'>—</span></div>
     <div class='info-card'><span class='k'>TURN Relay</span><span class='v' id='turn'>—</span></div>
     <div class='info-card'><span class='k'>Transport</span><span class='v' id='transport'>—</span></div>
     <div class='info-card'><span class='k'>WebSocket</span><span class='v' style='color:#58a6ff'>/vc</span></div>
+    <div class='info-card'><span class='k'>VC Server URL</span><span class='v' id='vcUrl' style='color:#58a6ff;font-size:.75em'>—</span></div>
   </div>
   <div id='roomList'></div>
   <div class='err' id='err'></div>
@@ -180,6 +189,8 @@ async function load(){
     let d=await r.json();
     document.getElementById('clients').textContent=d.clients;
     document.getElementById('rooms').textContent=d.rooms;
+    document.getElementById('optimal').textContent=d.optimalPlayers>0?d.optimalPlayers+' (ideal)':'—';
+    document.getElementById('vcUrl').textContent=d.serverUrl||'—';
     let t=document.getElementById('turn');
     t.textContent=d.coturn?'ON':'OFF';
     t.className='v '+(d.coturn?'on':'off');
@@ -221,6 +232,8 @@ load();setInterval(load,3000);
             + $"\"status\":\"ok\","
             + $"\"clients\":{clientCount},"
             + $"\"rooms\":{roomCount},"
+            + $"\"optimalPlayers\":{OptimalPlayerCount},"
+            + $"\"serverUrl\":\"{EscJson(ServerUrl)}\","
             + $"\"coturn\":{(coturnEnabled ? "true" : "false")},"
             + $"\"coturnUrl\":\"{EscJson(turnUrl ?? "")}\","
             + $"\"wss\":false"
@@ -238,6 +251,8 @@ load();setInterval(load,3000);
         sb.Append('{');
         sb.Append($"\"clients\":{clientCount},");
         sb.Append($"\"rooms\":{roomCount},");
+        sb.Append($"\"optimalPlayers\":{OptimalPlayerCount},");
+        sb.Append($"\"serverUrl\":\"{EscJson(ServerUrl)}\",");
         sb.Append($"\"coturn\":{(coturnEnabled ? "true" : "false")},");
         sb.Append("\"wss\":false,");
         sb.Append("\"roomList\":[");

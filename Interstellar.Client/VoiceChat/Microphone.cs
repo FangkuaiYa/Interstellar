@@ -57,11 +57,6 @@ public class ManualMicrophone : IMicrophone
     public float Level => level * volume;
     private float level = 0f;
 
-    // VAD hangover: keep sending for N frames after voice drops below threshold
-    // to avoid chopping off the ends of words or quiet syllables.
-    private int hangoverFrames = 0;
-    private const int HangoverMax = 3; // 3 frames × 40ms = 120ms of trailing audio
-
     public void PushAudioData(float[] audioData)
     {
         float max = audioData.Max();
@@ -93,19 +88,8 @@ public class ManualMicrophone : IMicrophone
             return;
         }
 
-        // VAD gate with hangover: skip encoding/sending when below silence threshold
-        const float SilenceThreshold = 0.008f; // ~-42 dBFS — more aggressive than old 0.005 (-46 dBFS)
-        if (level >= SilenceThreshold)
-        {
-            hangoverFrames = HangoverMax;
-            context?.SendAudio(sampleBuffer, AudioLength, 40.0, volume);
-        }
-        else if (hangoverFrames > 0)
-        {
-            hangoverFrames--;
-            context?.SendAudio(sampleBuffer, AudioLength, 40.0, volume);
-        }
-        // else: true silence — frame is dropped entirely, saving ~40 bytes + overhead
+        // VAD gate DISABLED — same reason as WindowsMicrophone
+        context?.SendAudio(sampleBuffer, AudioLength, 40.0, volume);
     }
 }
 
@@ -137,10 +121,6 @@ public class WindowsMicrophone : IMicrophone
     int deviceNum;
     public float Level => level * volume;
     private float level = 0f;
-
-    // VAD hangover: keep sending for N frames after voice drops below threshold
-    private int hangoverFrames = 0;
-    private const int HangoverMax = 3; // 3 frames × 40ms = 120ms of trailing audio
 
     public WindowsMicrophone(string deviceName)
     {
@@ -175,18 +155,8 @@ public class WindowsMicrophone : IMicrophone
         if (level < 0f) level = 0f;
         if (max > level) level = max;
 
-        // VAD gate with hangover: skip encoding/sending when below silence threshold
-        const float SilenceThreshold = 0.008f; // ~-42 dBFS — more aggressive than old 0.005 (-46 dBFS)
-        if (level >= SilenceThreshold)
-        {
-            hangoverFrames = HangoverMax;
-            context?.SendAudio(sampleBuffer, samples, waveIn.BufferMilliseconds, volume);
-        }
-        else if (hangoverFrames > 0)
-        {
-            hangoverFrames--;
-            context?.SendAudio(sampleBuffer, samples, waveIn.BufferMilliseconds, volume);
-        }
-        // else: true silence — frame is dropped entirely, saving bandwidth
+        // VAD gate DISABLED — the 0.008f threshold was dropping 70-90% of frames
+        // on real hardware. Bandwidth savings are not worth cutting off speech.
+        context?.SendAudio(sampleBuffer, samples, waveIn.BufferMilliseconds, volume);
     }
 }

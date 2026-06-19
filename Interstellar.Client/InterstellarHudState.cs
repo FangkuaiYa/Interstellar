@@ -1,11 +1,13 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Reflection;
 using TMPro;
 using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.SceneManagement;
 using static UnityEngine.UI.Button;
+using VoiceChatPlugin.VoiceChat;
 using Object = UnityEngine.Object;
 
 namespace VoiceChatPlugin.VoiceChat;
@@ -35,6 +37,8 @@ public static class InterstellarHudState
     private static TextMeshPro? _micTooltipTmp;
     private static TextMeshPro? _spkTooltipTmp;
 
+    private static TextMeshPro? _serverInfoText;
+
     private static bool _micMuted;
     private static bool _speakerMuted;
     private static VoiceChannel _channel = VoiceChannel.All;
@@ -52,6 +56,7 @@ public static class InterstellarHudState
             {
                 DestroyButtons();
                 DestroyTooltips();
+                DestroyServerInfoText();
             });
     }
 
@@ -62,8 +67,10 @@ public static class InterstellarHudState
 
         EnsureHudButtons(hud);
         EnsureTooltips(hud);
+        EnsureServerInfoText(hud);
         UpdateHudButtonsVisibility();
         RefreshButtonVisuals();
+        UpdateServerInfoText();
     }
 
     internal static void ApplyMicState()
@@ -120,6 +127,11 @@ public static class InterstellarHudState
         _micTooltipTmp = null; _spkTooltipTmp = null;
     }
 
+    private static void DestroyServerInfoText()
+    {
+        if (_serverInfoText != null) { Object.Destroy(_serverInfoText.gameObject); _serverInfoText = null; }
+    }
+
     private static void EnsureHudButtons(HudManager hud)
     {
         if (hud.MapButton == null) return;
@@ -167,7 +179,7 @@ public static class InterstellarHudState
         }
     }
 
-    private static void EnsureTooltips(HudManager hud)
+	private static void EnsureTooltips(HudManager hud)
     {
         if (_micTooltip == null)
             _micTooltip = CreateTooltipObject(hud.transform.parent, out _micTooltipTmp);
@@ -263,6 +275,59 @@ public static class InterstellarHudState
         }
     }
 
+    private static void EnsureServerInfoText(HudManager hud)
+    {
+        if (_serverInfoText != null) return;
+
+        var go = new GameObject("VC_ServerInfo");
+        go.transform.SetParent(hud.transform, false);
+        go.transform.localPosition = new Vector3(4.2f, 0f, -10f);
+
+        _serverInfoText = go.AddComponent<TextMeshPro>();
+        _serverInfoText.fontSize = 1.2f;
+        _serverInfoText.alignment = TextAlignmentOptions.Right;
+        _serverInfoText.sortingOrder = 32767;
+        _serverInfoText.rectTransform.sizeDelta = new Vector2(2f, 0.5f);
+    }
+
+    private static void UpdateServerInfoText()
+    {
+        if (_serverInfoText == null) return;
+        if (!VoiceChatServerState.HasInfo)
+        {
+            _serverInfoText.text = "";
+            return;
+        }
+
+        int cur = VoiceChatServerState.CurrentTotalPlayers;
+        int opt = VoiceChatServerState.OptimalPlayers;
+        bool atCap = VoiceChatServerState.IsAtCapacity;
+
+        // Show location name if available, otherwise fall back to shortened server address
+        string label = CustomServerLoader.MatchedVcLocation
+            ?? ShortenServerUrl(VoiceChatServerState.VoiceServerUrl);
+
+        if (opt > 0)
+        {
+            _serverInfoText.text = $"{label}  {cur}/{opt}";
+            _serverInfoText.color = atCap ? new Color(1f, 0.65f, 0.2f) : new Color(0.6f, 0.85f, 0.6f);
+        }
+        else
+        {
+            _serverInfoText.text = $"{label}  {cur}";
+            _serverInfoText.color = new Color(0.6f, 0.85f, 0.6f);
+        }
+    }
+
+    private static string ShortenServerUrl(string url)
+    {
+        // Extract host from ws://host:port/vc
+        var host = url.Replace("ws://", "").Replace("wss://", "").Replace("/vc", "");
+        var colon = host.LastIndexOf(':');
+        if (colon > 0) host = host[..colon];
+        return host;
+    }
+
     private static GameObject CreateTooltipObject(Transform root, out TextMeshPro tmp)
     {
         var go = new GameObject("VC_Tooltip");
@@ -292,16 +357,19 @@ public static class InterstellarHudState
     {
         if (_micTooltip == null || _micTooltipTmp == null || _micButtonObj == null) return;
         string ch = _channel == VoiceChannel.Impostor
-            ? "Impostors" : "All";
-        string st = _micMuted ? "Muted"
-            : (_channel == VoiceChannel.Impostor ? "Impostor Radio"
-            : "Active");
+            ? TranslationHelper.Get("vc.hud.impostors", "Impostors")
+            : TranslationHelper.Get("vc.hud.all", "All");
+        string st = _micMuted
+            ? TranslationHelper.Get("vc.hud.muted", "Muted")
+            : (_channel == VoiceChannel.Impostor
+                ? TranslationHelper.Get("vc.hud.impostorRadio", "Impostor Radio")
+                : TranslationHelper.Get("vc.hud.active", "Active"));
         _micTooltipTmp.text =
-            "<b>" + "Microphone" + "</b>\n" +
-            string.Format("Status: {0}", st) + "\n" +
-            string.Format("Channel: {0}", ch) + "\n" +
-            string.Format("Volume: {0}%", (int)(VoiceChatConfig.MicVolume * 100f)) + "\n" +
-            string.Format("Hotkey: {0}", "M");
+            "<b>" + TranslationHelper.Get("vc.hud.microphone", "Microphone") + "</b>\n" +
+            TranslationHelper.Get("vc.hud.status", "Status") + ": " + st + "\n" +
+            TranslationHelper.Get("vc.hud.channel", "Channel") + ": " + ch + "\n" +
+            TranslationHelper.Get("vc.hud.volume", "Volume") + ": " + (int)(VoiceChatConfig.MicVolume * 100f) + "%\n" +
+            TranslationHelper.Get("vc.hud.hotkey", "Hotkey") + ": M";
         PositionNear(_micTooltip, _micButtonObj);
         _micTooltip.SetActive(true);
     }
@@ -310,12 +378,13 @@ public static class InterstellarHudState
     {
         if (_spkTooltip == null || _spkTooltipTmp == null || _spkButtonObj == null) return;
         string st = _speakerMuted
-            ? "Muted" : "Active";
+            ? TranslationHelper.Get("vc.hud.muted", "Muted")
+            : TranslationHelper.Get("vc.hud.active", "Active");
         _spkTooltipTmp.text =
-            "<b>" + "Speaker" + "</b>\n" +
-            string.Format("Status: {0}", st) + "\n" +
-            string.Format("Volume: {0}%", (int)(VoiceChatConfig.MasterVolume * 100f)) + "\n" +
-            string.Format("Hotkey: {0}", "N");
+            "<b>" + TranslationHelper.Get("vc.hud.speaker", "Speaker") + "</b>\n" +
+            TranslationHelper.Get("vc.hud.status", "Status") + ": " + st + "\n" +
+            TranslationHelper.Get("vc.hud.volume", "Volume") + ": " + (int)(VoiceChatConfig.MasterVolume * 100f) + "%\n" +
+            TranslationHelper.Get("vc.hud.hotkey", "Hotkey") + ": N";
         PositionNear(_spkTooltip, _spkButtonObj);
         _spkTooltip.SetActive(true);
     }
@@ -376,6 +445,35 @@ public static class InterstellarHudState
                 new Vector2(0.5f, 0.5f), 900f);
             spr.hideFlags |= HideFlags.HideAndDontSave | HideFlags.DontSaveInEditor;
             _spriteCache[path] = spr;
+            return spr;
+        }
+        catch
+        {
+            InterstellarPlugin.Logger.LogError("[VC] Sprite load failed: " + path);
+            return null!;
+        }
+    }
+
+    /// <summary>Loads a sprite with a specific pixels-per-unit value (like TOR's helper).</summary>
+    private static Sprite? LoadSpriteFromResources(string path, float pixelsPerUnit)
+    {
+        var key = path + "@" + pixelsPerUnit;
+        if (_spriteCache.TryGetValue(key, out var cached)) return cached;
+
+        try
+        {
+            var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(path);
+            if (stream == null) { InterstellarPlugin.Logger.LogError("[VC] Resource not found: " + path); return null; }
+
+            var tex = new Texture2D(0, 0, TextureFormat.RGBA32, false) { wrapMode = TextureWrapMode.Clamp };
+            using var ms = new MemoryStream();
+            stream.CopyTo(ms);
+            tex.LoadImage(ms.ToArray(), false);
+
+            var spr = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height),
+                new Vector2(0.5f, 0.5f), pixelsPerUnit);
+            spr.hideFlags |= HideFlags.HideAndDontSave | HideFlags.DontSaveInEditor;
+            _spriteCache[key] = spr;
             return spr;
         }
         catch

@@ -29,12 +29,28 @@ public static class VoiceChatConfig
     public static bool HostImpostorPrivateRadio => _hostImpRadio?.Value ?? false;
     public static bool HostOnlyMeetingOrLobby => _hostMeetingOnly?.Value ?? false;
 
+    // ── Server configuration ──────────────────────────────────────────
+
+    /// <summary>Whether to fetch server list from the API.</summary>
+    public static bool UseApiServerList => _useApiServerList?.Value ?? true;
+
+    /// <summary>Custom server list in JSON format (same structure as the API).</summary>
+    public static string CustomServerListJson => _customServerListJson?.Value ?? "";
+
+    /// <summary>Force all Among Us servers to use a single voice server.</summary>
+    public static bool ForceVoiceServerEnabled => _forceVoiceServerEnabled?.Value ?? false;
+
+    /// <summary>Voice server URL to force when ForceVoiceServerEnabled is true.</summary>
+    public static string ForceVoiceServerUrl => _forceVoiceServerUrl?.Value ?? "";
+
     private static ConfigEntry<string>? _mic, _speaker, _server;
     private static ConfigEntry<float>? _masterVol, _micVol;
     private static ConfigEntry<float>? _hostMaxDist;
     private static ConfigEntry<bool>? _hostWallsBlock, _hostSight, _hostImpGhost;
     private static ConfigEntry<bool>? _hostOnlyGhost, _hostHearVent, _hostVentChat;
     private static ConfigEntry<bool>? _hostCommSab, _hostCamera, _hostImpRadio, _hostMeetingOnly;
+    private static ConfigEntry<bool>? _useApiServerList, _forceVoiceServerEnabled;
+    private static ConfigEntry<string>? _customServerListJson, _forceVoiceServerUrl;
 
     /// <summary>Cached list of microphone device names for UI cycling.</summary>
     public static List<string> MicrophoneDevices { get; } = new();
@@ -108,6 +124,16 @@ public static class VoiceChatConfig
         _hostCamera = cfg.Bind("VoiceChat.Room", "CameraCanHear", true);
         _hostImpRadio = cfg.Bind("VoiceChat.Room", "ImpostorPrivateRadio", false);
         _hostMeetingOnly = cfg.Bind("VoiceChat.Room", "OnlyMeetingOrLobby", false);
+
+        // Server configuration
+        _useApiServerList = cfg.Bind("VoiceChat.Server", "UseApiServerList", true,
+            "Fetch available servers from the API. If disabled, only the custom server list is used.");
+        _customServerListJson = cfg.Bind("VoiceChat.Server", "CustomServerListJson", "",
+            "Custom server list in JSON format (same structure as the API: {\"servers\":[{...}]}). Merged with API results if API is enabled.");
+        _forceVoiceServerEnabled = cfg.Bind("VoiceChat.Server", "ForceVoiceServerEnabled", false,
+            "Force all Among Us servers to use a single voice server URL.");
+        _forceVoiceServerUrl = cfg.Bind("VoiceChat.Server", "ForceVoiceServerUrl", "",
+            "Voice server WebSocket URL to use when ForceVoiceServerEnabled is true. Leave empty for default fallback.");
 
         ApplyLocalHostSettingsToSynced();
     }

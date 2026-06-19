@@ -1,4 +1,5 @@
 using UnityEngine;
+using VoiceChatPlugin;
 using VoiceChatPlugin.VoiceChat;
 using Object = UnityEngine.Object;
 
@@ -8,6 +9,7 @@ internal static class InterstellarRoomDriver
 {
     private static bool _wasInIntro = false;
     private static bool _wasInEndGame = false;
+    private static bool _splashShownThisGame;
 
     private static bool IsLocalServer()
     {
@@ -28,6 +30,8 @@ internal static class InterstellarRoomDriver
             if (VoiceChatRoom.Current != null)
                 VoiceChatRoom.CloseCurrentRoom();
             _wasInIntro = _wasInEndGame = false;
+            _splashShownThisGame = false;
+            VoiceChatServerState.Reset();
             return;
         }
 
@@ -47,6 +51,13 @@ internal static class InterstellarRoomDriver
             }
 
             InterstellarPlugin.Logger.LogInfo($"[VC] Room started: region={region} room={roomId}");
+
+            // Show join splash — once per game session, for all players including host
+            if (!_splashShownThisGame)
+            {
+                _splashShownThisGame = true;
+                JoinSplashScreen.Show();
+            }
         }
 
         if (VoiceChatRoom.Current == null) return;

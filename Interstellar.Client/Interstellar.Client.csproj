@@ -43,6 +43,7 @@
   <ItemGroup>
     <EmbeddedResource Include="Resources\*.png" />
     <EmbeddedResource Include="Resources\Logo.jpg" />
+    <EmbeddedResource Include="Resources\stringData.json" />
   </ItemGroup>
 
   <!-- ================================================================

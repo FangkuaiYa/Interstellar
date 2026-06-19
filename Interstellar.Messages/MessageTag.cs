@@ -21,4 +21,5 @@ public enum MessageTag
     UpdateMuteStatus = 10,
     ShareMuteStatus = 11,
     HostSettings = 12,
+    ServerInfo = 13,
 }

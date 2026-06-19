@@ -3,6 +3,7 @@ using HarmonyLib;
 using TMPro;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using VoiceChatPlugin.VoiceChat;
 using Object = UnityEngine.Object;
 
 namespace VoiceChatPlugin.VoiceChat;
@@ -15,6 +16,7 @@ public static class VoiceChatSettingsMenu
     static VoiceChatSettingsMenu()
     {
         Il2CppInterop.Runtime.Injection.ClassInjector.RegisterTypeInIl2Cpp<VoiceChatSettingsWindow>();
+        Il2CppInterop.Runtime.Injection.ClassInjector.RegisterTypeInIl2Cpp<JoinSplashScreen.SplashCoroutineRunner>();
 
         // On first scene load: create host GameObject + pre-cache devices.
         // On every scene change: auto-close settings.
@@ -72,7 +74,7 @@ public static class VoiceChatSettingsMenu
         var label = btn.GetComponentInChildren<TextMeshPro>();
         if (label)
         {
-            label.text = "VC";
+            label.text = TranslationHelper.Get("vc.settings.btnVC", "VC");
             label.transform.localScale = new Vector3(1.8f, 0.95f, 1f);
         }
 

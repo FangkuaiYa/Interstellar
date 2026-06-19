@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using static VoiceChatPlugin.VoiceChat.TranslationHelper;
 
 namespace VoiceChatPlugin.VoiceChat;
 
@@ -21,7 +22,13 @@ public class VoiceChatSettingsWindow : MonoBehaviour
     {
         ShowWindow = !ShowWindow;
         if (ShowWindow)
+        {
             _needsDeviceRefresh = true;
+
+            // Auto-close the vanilla game settings when VC settings open
+            var opt = UnityEngine.Object.FindObjectOfType<OptionsMenuBehaviour>();
+            if (opt) opt.Close();
+        }
     }
 
     /// <summary>Closes the window without side effects.</summary>
@@ -95,7 +102,7 @@ public class VoiceChatSettingsWindow : MonoBehaviour
         {
             // ── Title bar ──
             GUILayout.BeginHorizontal();
-            GUILayout.Label("<b>Voice Chat</b>", _titleStyle);
+            GUILayout.Label($"<b>{Get("vc.settings.title", "Voice Chat")}</b>", _titleStyle);
             GUILayout.FlexibleSpace();
             GUILayout.Label("F1", new GUIStyle(GUI.skin.label) { fontSize = 10, normal = new GUIStyleState { textColor = Color.gray } });
             GUILayout.Space(4f);
@@ -158,7 +165,7 @@ public class VoiceChatSettingsWindow : MonoBehaviour
 
     void RenderPersonalSection()
     {
-        GUILayout.Label("Personal", _sectionLabelStyle);
+        GUILayout.Label(Get("vc.settings.personal", "Personal"), _sectionLabelStyle);
 
         bool showDevices = VoiceChatConfig.DeviceSelectionSupported;
 
@@ -166,7 +173,7 @@ public class VoiceChatSettingsWindow : MonoBehaviour
         {
             // Microphone device cycle
             RenderDeviceCycle(
-                "Microphone",
+                Get("vc.settings.microphone", "Microphone"),
                 VoiceChatConfig.MicrophoneDevice,
                 VoiceChatConfig.MicrophoneDevices,
                 v =>
@@ -177,7 +184,7 @@ public class VoiceChatSettingsWindow : MonoBehaviour
 
             // Speaker device cycle
             RenderDeviceCycle(
-                "Speaker",
+                Get("vc.settings.speaker", "Speaker"),
                 VoiceChatConfig.SpeakerDevice,
                 VoiceChatConfig.SpeakerDevices,
                 v =>
@@ -190,20 +197,20 @@ public class VoiceChatSettingsWindow : MonoBehaviour
         {
             // Android / unsupported platform — device selection unavailable
             GUILayout.BeginVertical(_boxStyle);
-            GUILayout.Label("Device selection not supported on this platform.",
+            GUILayout.Label(Get("vc.settings.noDeviceSupport", "Device selection not supported on this platform."),
                 new GUIStyle(GUI.skin.label) { normal = new GUIStyleState { textColor = Color.gray }, wordWrap = true });
             GUILayout.EndVertical();
         }
 
         // Mic Volume slider
-        RenderSlider("Mic Volume", 0.1f, 2f, VoiceChatConfig.MicVolume, v =>
+        RenderSlider(Get("vc.settings.micVolume", "Mic Volume"), 0.1f, 2f, VoiceChatConfig.MicVolume, v =>
         {
             VoiceChatConfig.SetMicVolume(v);
             VoiceChatRoom.Current?.SetMicVolume(v);
         });
 
         // Master Volume slider
-        RenderSlider("Master Volume", 0.1f, 2f, VoiceChatConfig.MasterVolume, v =>
+        RenderSlider(Get("vc.settings.masterVolume", "Master Volume"), 0.1f, 2f, VoiceChatConfig.MasterVolume, v =>
         {
             VoiceChatConfig.SetMasterVolume(v);
             VoiceChatRoom.Current?.SetMasterVolume(v);
@@ -215,21 +222,21 @@ public class VoiceChatSettingsWindow : MonoBehaviour
     // Static descriptor array — allocated once, not every OnGUI frame
     private static readonly (string label, Func<bool> getter, Action<bool> setter)[] RoomBoolSettings = new (string, Func<bool>, Action<bool>)[]
     {
-        ("Walls Block Sound",       () => VoiceChatConfig.SyncedRoomSettings.WallsBlockSound,       v => VoiceChatConfig.SetHostWallsBlockSound(v)),
-        ("Only Hear In Sight",      () => VoiceChatConfig.SyncedRoomSettings.OnlyHearInSight,       v => VoiceChatConfig.SetHostOnlyHearInSight(v)),
-        ("Impostor Hear Ghosts",    () => VoiceChatConfig.SyncedRoomSettings.ImpostorHearGhosts,    v => VoiceChatConfig.SetHostImpostorHearGhosts(v)),
-        ("Only Ghosts Can Talk",    () => VoiceChatConfig.SyncedRoomSettings.OnlyGhostsCanTalk,     v => VoiceChatConfig.SetHostOnlyGhostsCanTalk(v)),
-        ("Hear In Vent",            () => VoiceChatConfig.SyncedRoomSettings.HearInVent,            v => VoiceChatConfig.SetHostHearInVent(v)),
-        ("Vent Private Chat",       () => VoiceChatConfig.SyncedRoomSettings.VentPrivateChat,       v => VoiceChatConfig.SetHostVentPrivateChat(v)),
-        ("Comms Sabotage Mutes",    () => VoiceChatConfig.SyncedRoomSettings.CommsSabDisables,      v => VoiceChatConfig.SetHostCommsSabDisables(v)),
-        ("Camera Can Hear",         () => VoiceChatConfig.SyncedRoomSettings.CameraCanHear,         v => VoiceChatConfig.SetHostCameraCanHear(v)),
-        ("Impostor Private Radio",  () => VoiceChatConfig.SyncedRoomSettings.ImpostorPrivateRadio,  v => VoiceChatConfig.SetHostImpostorPrivateRadio(v)),
-        ("Only Meeting / Lobby",    () => VoiceChatConfig.SyncedRoomSettings.OnlyMeetingOrLobby,    v => VoiceChatConfig.SetHostOnlyMeetingOrLobby(v)),
+        (Get("vc.settings.wallsBlockSound", "Walls Block Sound"),          () => VoiceChatConfig.SyncedRoomSettings.WallsBlockSound,       v => VoiceChatConfig.SetHostWallsBlockSound(v)),
+        (Get("vc.settings.onlyHearInSight", "Only Hear In Sight"),        () => VoiceChatConfig.SyncedRoomSettings.OnlyHearInSight,       v => VoiceChatConfig.SetHostOnlyHearInSight(v)),
+        (Get("vc.settings.impostorHearGhosts", "Impostor Hear Ghosts"),   () => VoiceChatConfig.SyncedRoomSettings.ImpostorHearGhosts,    v => VoiceChatConfig.SetHostImpostorHearGhosts(v)),
+        (Get("vc.settings.onlyGhostsCanTalk", "Only Ghosts Can Talk"),    () => VoiceChatConfig.SyncedRoomSettings.OnlyGhostsCanTalk,     v => VoiceChatConfig.SetHostOnlyGhostsCanTalk(v)),
+        (Get("vc.settings.hearInVent", "Hear In Vent"),                   () => VoiceChatConfig.SyncedRoomSettings.HearInVent,            v => VoiceChatConfig.SetHostHearInVent(v)),
+        (Get("vc.settings.ventPrivateChat", "Vent Private Chat"),         () => VoiceChatConfig.SyncedRoomSettings.VentPrivateChat,       v => VoiceChatConfig.SetHostVentPrivateChat(v)),
+        (Get("vc.settings.commsSabotageMutes", "Comms Sabotage Mutes"),   () => VoiceChatConfig.SyncedRoomSettings.CommsSabDisables,      v => VoiceChatConfig.SetHostCommsSabDisables(v)),
+        (Get("vc.settings.cameraCanHear", "Camera Can Hear"),             () => VoiceChatConfig.SyncedRoomSettings.CameraCanHear,         v => VoiceChatConfig.SetHostCameraCanHear(v)),
+        (Get("vc.settings.impostorPrivateRadio", "Impostor Private Radio"),() => VoiceChatConfig.SyncedRoomSettings.ImpostorPrivateRadio,  v => VoiceChatConfig.SetHostImpostorPrivateRadio(v)),
+        (Get("vc.settings.onlyMeetingOrLobby", "Only Meeting / Lobby"),   () => VoiceChatConfig.SyncedRoomSettings.OnlyMeetingOrLobby,    v => VoiceChatConfig.SetHostOnlyMeetingOrLobby(v)),
     };
 
     void RenderRoomSection(bool isHost)
     {
-        GUILayout.Label("Room", _sectionLabelStyle);
+        GUILayout.Label(Get("vc.settings.room", "Room"), _sectionLabelStyle);
 
         // Shared change handler for all room settings
         void RoomChanged()
@@ -241,7 +248,7 @@ public class VoiceChatSettingsWindow : MonoBehaviour
         // Max Chat Distance
         {
             GUI.enabled = isHost;
-            RenderSlider("Max Chat Distance", 1.5f, 20f,
+            RenderSlider(Get("vc.settings.maxChatDistance", "Max Chat Distance"), 1.5f, 20f,
                 isHost ? VoiceChatConfig.HostMaxChatDistance
                        : VoiceChatConfig.SyncedRoomSettings.MaxChatDistance,
                 v =>
@@ -281,7 +288,7 @@ public class VoiceChatSettingsWindow : MonoBehaviour
 
             int idx = Math.Max(0, options.IndexOf(currentValue ?? ""));
             string display = string.IsNullOrEmpty(currentValue)
-                ? "Default"
+                ? Get("vc.settings.defaultDevice", "Default")
                 : Truncate(currentValue, 20);
 
             // Only process on the actual click frame (EventType.Used), not held repeats

@@ -6,6 +6,7 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.Events;
 using static UnityEngine.UI.Button;
+using static VoiceChatPlugin.VoiceChat.TranslationHelper;
 using Object = UnityEngine.Object;
 
 namespace VoiceChatPlugin.VoiceChat;
@@ -133,7 +134,7 @@ public static class VoiceVolumeMenu
         var t = Object.Instantiate(_titleTmp, _popUp.transform);
         t.GetComponent<RectTransform>().localPosition = Vector3.up * 2.3f;
         t.gameObject.SetActive(true);
-        t.text = "Player Volumes";
+        t.text = Get("vc.volume.title", "Player Volumes");
         t.name = "VCVolTitle";
         t.sortingOrder = 32767;
     }
@@ -174,7 +175,7 @@ public static class VoiceVolumeMenu
             var btn = Object.Instantiate(_btnPrefab!, content);
             btn.transform.localPosition = new Vector3(0f, 0f, -0.5f);
             btn.transform.localScale = new Vector3(0.9f, 0.8f, 1f);
-            btn.Text.text = "No players in room";
+            btn.Text.text = Get("vc.volume.noPlayers", "No players in room");
             btn.Text.fontSizeMin = btn.Text.fontSizeMax = 1.5f;
             btn.Text.color = new Color32(140, 160, 200, 200);
             btn.Background.color = Color.clear;

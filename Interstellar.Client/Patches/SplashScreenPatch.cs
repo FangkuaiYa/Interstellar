@@ -4,6 +4,7 @@ using BepInEx.Unity.IL2CPP.Utils.Collections;
 using HarmonyLib;
 using TMPro;
 using UnityEngine;
+using static VoiceChatPlugin.VoiceChat.TranslationHelper;
 using Object = UnityEngine.Object;
 
 namespace VoiceChatPlugin;
@@ -97,11 +98,13 @@ public static class SplashScreenPatch
 
         var textGo = new GameObject("VC_SplashText");
         textGo.transform.SetParent(cam.transform, false);
-        textGo.transform.localPosition = new Vector3(0f, -2.2f, 3.1f);
+        textGo.transform.localPosition = new Vector3(0f, -2f, 3.1f);
         textGo.transform.localRotation = Quaternion.identity;
 
         var textTmp = textGo.AddComponent<TextMeshPro>();
-        textTmp.text = "Interstellar Voice Chat\n<size=70%>Made by <color=#00ffff>FangkuaiYa</color>, <color=#00ffff>ELinmei</color> and <color=#FFD700>Dolly</color></size>";
+        textTmp.text = Get("vc.splash.title", "Interstellar Voice Chat") + "\n<size=70%>"
+            + Get("vc.splash.madeBy", "Made by") + " <color=#00ffff>FangkuaiYa</color>, <color=#00ffff>HayaiUme</color>\n"
+            + Get("vc.splash.sponsorBy", "Sponsor by") + " <color=#ff44ff>TAIKongguo</color></size>";
         textTmp.fontSize = 2.5f;
         textTmp.fontStyle = FontStyles.Bold;
         textTmp.alignment = TextAlignmentOptions.Center;

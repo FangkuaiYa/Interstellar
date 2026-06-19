@@ -11,6 +11,7 @@ namespace Interstellar.Server
             string? turnUrl = null;
             string? turnUser = null;
             string? turnPass = null;
+            int optimalPlayers = 0;
 
             if(args.Length > 1)
             {
@@ -59,6 +60,14 @@ namespace Interstellar.Server
                                 i++;
                             }
                             break;
+                        case "--optimal-players":
+                        case "-op":
+                            if (!isTerminal && int.TryParse(args[i + 1], out var op))
+                            {
+                                optimalPlayers = op;
+                                i++;
+                            }
+                            break;
                     }
                 }
             }
@@ -67,10 +76,12 @@ namespace Interstellar.Server
             if (args.Length >= 1 && !args[0].StartsWith("-")) url = urlPrefix + args[0];
 
             Console.WriteLine("Starting Interstellar Voice Server at " + url);
+            if (optimalPlayers > 0)
+                Console.WriteLine("  Optimal players: " + optimalPlayers);
             if (!string.IsNullOrEmpty(turnUrl))
                 Console.WriteLine("  Coturn TURN server: " + turnUrl);
 
-            Server.StartServer(url, secure, certPath, password, turnUrl, turnUser, turnPass);
+            Server.StartServer(url, secure, certPath, password, turnUrl, turnUser, turnPass, optimalPlayers);
         }
     }
 }
