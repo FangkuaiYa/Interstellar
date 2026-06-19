@@ -59,7 +59,7 @@ public class VoiceChatSettingsWindow : MonoBehaviour
 
         if (_needsDeviceRefresh)
         {
-            VoiceChatConfig.RefreshDeviceCaches();
+            VoiceChatConfig.RefreshDeviceCaches(true);
             _needsDeviceRefresh = false;
         }
 
