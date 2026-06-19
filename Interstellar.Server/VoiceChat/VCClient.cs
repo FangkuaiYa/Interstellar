@@ -16,6 +16,7 @@ internal class VCClient
     public bool IsClosed => service.ConnectionState == WebSocketSharp.WebSocketState.Closed;
 
     public bool IsMute { get; private set; } = false;
+    public bool IsImpostorRadio { get; private set; } = false;
 
     public VCRoom Room => myRoom;
 
@@ -28,11 +29,12 @@ internal class VCClient
         this.myRoom = room;
     }
 
-    public void UpdateMuteStatus(bool isMute)
+    public void UpdateMuteStatus(bool isMute, bool isImpostorRadio = false)
     {
-        if(this.IsMute == isMute) return;
+        if(this.IsMute == isMute && this.IsImpostorRadio == isImpostorRadio) return;
         this.IsMute = isMute;
-        myRoom.Broadcast(ClientId, new ShareMuteStatusMessage(ClientId, isMute));
+        this.IsImpostorRadio = isImpostorRadio;
+        myRoom.Broadcast(ClientId, new ShareMuteStatusMessage(ClientId, isMute, isImpostorRadio));
     }
 
     /// <summary>Called when someone other than this client joins or leaves.</summary>

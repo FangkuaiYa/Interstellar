@@ -21,22 +21,22 @@ public static class JoinSplashScreen
     /// Call when VoiceChatRoom.Start() succeeds. Shows a fade-in → hold → fade-out overlay.
     /// Does NOT require ServerInfo to be received yet — shows what's available.
     /// </summary>
+    private static MonoBehaviour? _runner;
+
     public static void Show()
     {
         if (_isShowing) return;
 
         _isShowing = true;
 
-        // Find the persistent host GameObject (created by VoiceChatSettingsMenu)
-        var host = GameObject.Find("VC_SettingsHost");
-        if (host == null)
+        if (!_runner)
         {
-            _isShowing = false;
-            return;
+            var go = new GameObject("VC_SplashRunner");
+            Object.DontDestroyOnLoad(go);
+            _runner = go.AddComponent<SplashCoroutineRunner>();
         }
 
-        host.GetComponent<VoiceChatSettingsWindow>()?.StartCoroutine(
-            ShowSplash().WrapToIl2Cpp());
+        _runner!.StartCoroutine(ShowSplash().WrapToIl2Cpp());
     }
 
     private static IEnumerator ShowSplash()

@@ -29,7 +29,8 @@ public class VoiceChatRoom
     public void RemoveVirtualSpeaker(IVoiceComponent c) => _virtualSpeakers.Remove(c);
 
     public bool UsingMicrophone => _interstellar.Microphone != null;
-    public float LocalMicLevel => _localMicMeter?.Level ?? 0f;
+    public float LocalMicLevel => _interstellar.LocalLevel;
+    public bool IsClientImpostorRadio(int clientId) => _interstellar.IsClientImpostorRadio(clientId);
     public bool Mute => _interstellar.Mute;
     public int SampleRate => _interstellar.SampleRate;
 
@@ -160,7 +161,7 @@ public class VoiceChatRoom
     public void SetMasterVolume(float v) => _masterVolumeProperty.Volume = v;
     public void SetMicVolume(float v) => _interstellar.Microphone?.SetVolume(v);
     public void SetLoopBack(bool lb) => _interstellar.SetLoopBack(lb);
-    public void SetMute(bool mute) => _interstellar.SetMute(mute);
+    public void SetMute(bool mute, bool isImpostorRadio = false) => _interstellar.SetMute(mute, isImpostorRadio);
     public void ToggleMute() => SetMute(!Mute);
     public void SendHostSettings(VoiceChatRoomSettings s) => _interstellar.SendHostSettings(s);
 
@@ -231,8 +232,9 @@ public class VoiceChatRoom
             _androidSpeaker = null;
 
             _androidSpeaker = new AndroidSpeaker();
-            _androidSpeaker.Start();
-            _interstellar.Speaker = _androidSpeaker.Speaker;
+            _androidSpeaker.Setup();
+            _interstellar.Speaker = _androidSpeaker.Speaker; // Initialize BEFORE playback
+            _androidSpeaker.StartPlayback(); // Start PCM callback AFTER Initialize
             InterstellarPlugin.Logger.LogInfo("[VC] Android speaker (AudioTrack) initialised.");
         }
         catch (Exception ex)
@@ -277,7 +279,9 @@ public class VoiceChatRoom
         bool inMeeting = MeetingHud.Instance != null || ExileController.Instance != null;
         bool inGame = ShipStatus.Instance != null;
 
-        foreach (var client in _clients.Values)
+        // Copy to avoid collection-modified-during-enumeration from audio callback thread
+        var clients = _clients.Values.ToArray();
+        foreach (var client in clients)
         {
             if (inLobby || !inGame)
                 client.UpdateLobby();

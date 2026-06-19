@@ -34,7 +34,7 @@ public static class MeetingSpeakingIndicatorPatch
         if (room != null)
         {
             foreach (var c in room.AllClients)
-                if (c.PlayerId != byte.MaxValue && c.Level > SpeakingThreshold)
+                if (c.PlayerId != byte.MaxValue && c.Level > SpeakingThreshold && c.IsAudible)
                     speaking.Add(c.PlayerId);
 
             byte localId = PlayerControl.LocalPlayer

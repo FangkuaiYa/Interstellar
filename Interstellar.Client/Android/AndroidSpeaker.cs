@@ -33,17 +33,8 @@ public class AndroidSpeaker : IDisposable
         _manualSpeaker = new ManualSpeaker(null);
     }
 
-    public void Start()
+    public void Setup()
     {
-        if (_started) return;
-
-        _pcmManaged = new Action<Il2CppStructArray<float>>(OnPcmRead);
-        _pcmCb = DelegateSupport.ConvertDelegate<AudioClip.PCMReaderCallback>(_pcmManaged);
-        if (_pcmCb == null)
-            throw new InvalidOperationException("Failed to create IL2CPP PCM reader callback.");
-
-        _clip = AudioClip.Create("VC_Out", SampleRate / 4, Channels, SampleRate, true, _pcmCb);
-
         _gameObject = new GameObject("VC_AndroidSpeaker");
         UnityEngine.Object.DontDestroyOnLoad(_gameObject);
 
@@ -51,9 +42,20 @@ public class AndroidSpeaker : IDisposable
         _audioSource.loop = true;
         _audioSource.volume = 1f;
         _audioSource.spatialBlend = 0f;
-        _audioSource.clip = _clip;
-        _audioSource.Play();
+    }
 
+    public void StartPlayback()
+    {
+        if (_started) return;
+        // Create AudioClip AFTER Initialize so PCM callback never fires before speakerContext is set
+        _pcmManaged = new Action<Il2CppStructArray<float>>(OnPcmRead);
+        _pcmCb = DelegateSupport.ConvertDelegate<AudioClip.PCMReaderCallback>(_pcmManaged);
+        if (_pcmCb == null)
+            throw new InvalidOperationException("Failed to create IL2CPP PCM reader callback.");
+
+        _clip = AudioClip.Create("VC_Out", SampleRate / 4, Channels, SampleRate, true, _pcmCb);
+        _audioSource!.clip = _clip;
+        _audioSource!.Play();
         _started = true;
         InterstellarPlugin.Logger.LogInfo("[VC:AndroidSpk] Started PCM callback speaker.");
     }
@@ -94,10 +96,12 @@ public class AndroidSpeaker : IDisposable
             Array.Clear(_callbackScratch, 0, _callbackScratch.Length);
         }
 
+        // Boost speaker output — Android AudioTrack can be quieter than desktop
+        const float androidSpeakerGain = 1.5f;
         for (int i = 0; i < data.Length; i++)
         {
-            float sample = _callbackScratch[i];
-            data[i] = float.IsFinite(sample) ? sample : 0f;
+            float sample = _callbackScratch[i] * androidSpeakerGain;
+            data[i] = float.IsFinite(sample) ? Math.Clamp(sample, -1f, 1f) : 0f;
         }
 
         Interlocked.Increment(ref _cbCount);

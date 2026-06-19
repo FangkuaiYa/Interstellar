@@ -9,9 +9,12 @@ namespace Interstellar.Messages.Variation;
 public class UpdateMuteStatusMessage : IMessage
 {
     public bool Mute { get; }
-    public UpdateMuteStatusMessage(bool mute)
+    public bool IsImpostorRadio { get; }
+
+    public UpdateMuteStatusMessage(bool mute, bool isImpostorRadio = false)
     {
         this.Mute = mute;
+        this.IsImpostorRadio = isImpostorRadio;
     }
 
     int IMessage.Serialize(Span<byte> bytes)
@@ -19,6 +22,7 @@ public class UpdateMuteStatusMessage : IMessage
         int length = 0;
         length += IMessage.SerializeTag(ref bytes, MessageTag.UpdateMuteStatus);
         length += IMessage.SerializeBoolean(ref bytes, Mute);
+        length += IMessage.SerializeBoolean(ref bytes, IsImpostorRadio);
         return length;
     }
 
@@ -26,6 +30,10 @@ public class UpdateMuteStatusMessage : IMessage
     {
         read = 0;
         read += IMessage.DeserializeBoolean(ref bytes, out var mute);
-        return new(mute);
+        // Backward-compat: old clients don't send this field
+        bool impRadio = false;
+        if (bytes.Length > 0)
+            read += IMessage.DeserializeBoolean(ref bytes, out impRadio);
+        return new(mute, impRadio);
     }
 }

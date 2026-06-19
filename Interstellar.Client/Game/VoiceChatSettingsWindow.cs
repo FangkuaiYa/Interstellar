@@ -65,8 +65,9 @@ public class VoiceChatSettingsWindow : MonoBehaviour
 
         BuildStyles();
 
-        float winW = 440f;
-        float winH = 540f;
+        bool isAndroid = Application.platform == RuntimePlatform.Android;
+        float winW = isAndroid ? 640f : 440f;
+        float winH = isAndroid ? 800f : 540f;
         float x = (Screen.width - winW) / 2f;
         float y = (Screen.height - winH) / 2f;
 
@@ -92,7 +93,9 @@ public class VoiceChatSettingsWindow : MonoBehaviour
 
             _scrollPosition = GUILayout.BeginScrollView(_scrollPosition, GUILayout.Height(winH - 50f));
             {
-                bool isHost = AmongUsClient.Instance?.AmHost ?? false;
+                // Host can only edit room settings before the game starts (in lobby)
+                bool isHost = (AmongUsClient.Instance?.AmHost ?? false)
+                    && AmongUsClient.Instance?.GameState == InnerNet.InnerNetClient.GameStates.Joined;
 
                 RenderPersonalSection();
                 GUILayout.Space(20f);

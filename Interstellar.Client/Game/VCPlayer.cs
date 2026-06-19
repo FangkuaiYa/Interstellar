@@ -6,6 +6,8 @@ namespace VoiceChatPlugin.VoiceChat;
 
 public class VCPlayer
 {
+    private readonly VoiceChatRoom _room;
+    private readonly int _clientId;
     private readonly StereoRouter.Property _imager;
     private readonly VolumeRouter.Property _normalVolume, _ghostVolume, _radioVolume, _clientVolume;
     private readonly LevelMeterRouter.Property _levelMeter;
@@ -19,6 +21,7 @@ public class VCPlayer
     public float Volume => _clientVolume.Volume;
     public float Level => _levelMeter.Level;
     public bool IsMapped => _mappedPlayer != null && _mappedPlayer;
+    public bool IsAudible => _normalVolume.Volume > 0f || _ghostVolume.Volume > 0f || _radioVolume.Volume > 0f;
 
     public VCPlayer(
         VoiceChatRoom room,
@@ -30,6 +33,8 @@ public class VCPlayer
         VolumeRouter clientVolume,
         LevelMeterRouter levelMeter)
     {
+        _room = room;
+        _clientId = instance.ClientId;
         _imager = imager.GetProperty(instance);
         _normalVolume = normalVolume.GetProperty(instance);
         _ghostVolume = ghostVolume.GetProperty(instance);
@@ -105,8 +110,9 @@ public class VCPlayer
             return;
         }
 
-        // ImpostorPrivateRadio: non-impostors don't hear non-dead impostor speakers
-        if (s.ImpostorPrivateRadio && targetImp && !targetDead && !localImp)
+        // Non-impostors don't hear impostors who are in impostor radio mode
+        bool spkInRadio = _room.IsClientImpostorRadio(_clientId);
+        if (s.ImpostorPrivateRadio && targetImp && !targetDead && !localImp && spkInRadio)
         {
             MuteAll();
             return;
@@ -114,9 +120,9 @@ public class VCPlayer
 
         if (s.ImpostorPrivateRadio && localImp && targetImp && !targetDead)
         {
-            _normalVolume.Volume = 0f;
+            _normalVolume.Volume = spkInRadio ? 0f : 1f;
             _ghostVolume.Volume = 0f;
-            _radioVolume.Volume = 1f;
+            _radioVolume.Volume = spkInRadio ? 1f : 0f;
             return;
         }
 
@@ -210,15 +216,16 @@ public class VCPlayer
             return;
         }
 
-        // ImpostorPrivateRadio: non-impostors don't hear non-dead impostor speakers
-        if (s.ImpostorPrivateRadio && targetImp && !targetDead && !localImp)
+        // Non-impostors don't hear impostors who are in impostor radio mode
+        bool spkInRadio = _room.IsClientImpostorRadio(_clientId);
+        if (s.ImpostorPrivateRadio && targetImp && !targetDead && !localImp && spkInRadio)
         {
             MuteAll();
             return;
         }
 
-        // ImpostorPrivateRadio: impostors hear each other on radio channel
-        if (s.ImpostorPrivateRadio && localImp && targetImp && !targetDead)
+        // Impostors hear each other on radio channel when speaker is in radio mode
+        if (s.ImpostorPrivateRadio && localImp && targetImp && !targetDead && spkInRadio)
         {
             _normalVolume.Volume = 0f;
             _ghostVolume.Volume = 0f;

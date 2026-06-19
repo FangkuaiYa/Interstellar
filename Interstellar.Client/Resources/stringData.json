@@ -6,13 +6,13 @@
   },
   "vc.settings.personal": {
     "0": "Personal",
-    "13": "个人",
-    "14": "個人"
+    "13": "个人设置",
+    "14": "個人設定"
   },
   "vc.settings.room": {
     "0": "Room",
-    "13": "房间",
-    "14": "房間"
+    "13": "房间设置",
+    "14": "房間設定"
   },
   "vc.settings.microphone": {
     "0": "Microphone",
@@ -31,53 +31,53 @@
   },
   "vc.settings.masterVolume": {
     "0": "Master Volume",
-    "13": "主音量",
-    "14": "主音量"
+    "13": "总输出音量",
+    "14": "總輸出音量"
   },
   "vc.settings.maxChatDistance": {
     "0": "Max Chat Distance",
-    "13": "最大聊天距离",
-    "14": "最大聊天距離"
+    "13": "最大语音距离",
+    "14": "最大語音距離"
   },
   "vc.settings.wallsBlockSound": {
-    "0": "Walls Block Sound",
-    "13": "墙壁阻隔声音",
-    "14": "牆壁阻隔聲音"
+    "0": "Walls Block Voice",
+    "13": "墙壁阻挡语音",
+    "14": "牆壁阻擋語音"
   },
   "vc.settings.onlyHearInSight": {
-    "0": "Only Hear In Sight",
-    "13": "仅视线内可听",
-    "14": "僅視線內可聽"
+    "0": "Only Hear When Visible",
+    "13": "同屏可见时才能听到",
+    "14": "同屏可見時才能聽到"
   },
   "vc.settings.impostorHearGhosts": {
-    "0": "Impostor Hear Ghosts",
-    "13": "内鬼可听幽灵",
-    "14": "內鬼可聽幽靈"
+    "0": "Impostor Can Hear Ghosts",
+    "13": "内鬼可听到幽灵说话",
+    "14": "內鬼可聽到幽靈說話"
   },
   "vc.settings.onlyGhostsCanTalk": {
     "0": "Only Ghosts Can Talk",
-    "13": "仅幽灵可说话",
-    "14": "僅幽靈可說話"
+    "13": "仅幽灵可发言",
+    "14": "僅幽靈可發言"
   },
   "vc.settings.hearInVent": {
-    "0": "Hear In Vent",
-    "13": "管道内可听",
-    "14": "管道內可聽"
+    "0": "Hear While In Vent",
+    "13": "躲在管道内可听到语音",
+    "14": "躲在管道內可聽到語音"
   },
   "vc.settings.ventPrivateChat": {
     "0": "Vent Private Chat",
-    "13": "管道私聊",
-    "14": "管道私聊"
+    "13": "管道内私密通话",
+    "14": "管道內私密通話"
   },
   "vc.settings.commsSabotageMutes": {
-    "0": "Comms Sabotage Mutes",
-    "13": "通讯破坏时静音",
-    "14": "通訊破壞時靜音"
+    "0": "Mute During Sabotage",
+    "13": "通讯破坏时全体静音",
+    "14": "通訊破壞時全體靜音"
   },
   "vc.settings.cameraCanHear": {
-    "0": "Camera Can Hear",
-    "13": "监控可听语音",
-    "14": "監控可聽語音"
+    "0": "Hear While On Camera",
+    "13": "看监控时可听到语音",
+    "14": "看監控時可聽到語音"
   },
   "vc.settings.impostorPrivateRadio": {
     "0": "Impostor Private Radio",
@@ -85,19 +85,19 @@
     "14": "內鬼私密電台"
   },
   "vc.settings.onlyMeetingOrLobby": {
-    "0": "Only Meeting / Lobby",
-    "13": "仅会议/大厅",
-    "14": "僅會議/大廳"
+    "0": "Only Meeting / Lobby Can Chat",
+    "13": "仅会议与大厅可聊天",
+    "14": "僅會議與大廳可聊天"
   },
   "vc.settings.defaultDevice": {
     "0": "Default",
-    "13": "默认",
-    "14": "默認"
+    "13": "系统默认",
+    "14": "系統預設"
   },
   "vc.settings.noDeviceSupport": {
-    "0": "Device selection not supported on this platform.",
-    "13": "此平台不支持设备选择。",
-    "14": "此平台不支援設備選擇。"
+    "0": "Device selection is not supported on this platform.",
+    "13": "当前平台不支持切换音频设备。",
+    "14": "當前平台不支援切換音頻設備。"
   },
   "vc.settings.btnVC": {
     "0": "VC",
@@ -137,8 +137,8 @@
   },
   "vc.hud.active": {
     "0": "Active",
-    "13": "激活",
-    "14": "激活"
+    "13": "讲话中",
+    "14": "講話中"
   },
   "vc.hud.muted": {
     "0": "Muted",
@@ -162,9 +162,9 @@
   },
 
   "vc.popup.capacityTitle": {
-    "0": "Server At Capacity",
-    "13": "服务器已满",
-    "14": "伺服器已滿"
+    "0": "Server Full",
+    "13": "语音服务器已满",
+    "14": "語音伺服器已滿"
   },
   "vc.popup.switchServer": {
     "0": "Switch Server",
@@ -177,29 +177,29 @@
     "14": "確定"
   },
   "vc.popup.voiceServer": {
-    "0": "Voice Server",
-    "13": "语音服务器",
-    "14": "語音伺服器"
+    "0": "Voice Chat Server",
+    "13": "语音聊天服务器",
+    "14": "語音聊天伺服器"
   },
   "vc.popup.optimalPlayers": {
-    "0": "Optimal Players",
-    "13": "最佳人数",
-    "14": "最佳人數"
+    "0": "Optimal Capacity",
+    "13": "最佳承载人数",
+    "14": "最佳承載人數"
   },
   "vc.popup.currentPlayers": {
-    "0": "Current Players",
-    "13": "当前人数",
-    "14": "當前人數"
+    "0": "Current Online",
+    "13": "当前在线人数",
+    "14": "當前在線人數"
   },
   "vc.popup.atCapacity": {
-    "0": "The voice server is at optimal capacity.",
-    "13": "语音服务器已达到最佳人数。",
-    "14": "語音伺服器已達到最佳人數。"
+    "0": "The voice chat server has reached its optimal player capacity.",
+    "13": "语音聊天服务器已达到最佳承载人数。",
+    "14": "語音聊天伺服器已達到最佳承載人數。"
   },
   "vc.popup.switchHint": {
-    "0": "Consider switching to a different server,",
-    "13": "建议切换到其他服务器，",
-    "14": "建議切換到其他伺服器，"
+    "0": "Please consider switching to a less crowded server,",
+    "13": "建议换到一个不那么拥挤的服务器，",
+    "14": "建議換到一個沒那麼擁擠的伺服器，"
   },
   "vc.popup.sponsorHint": {
     "0": "or visit our main menu to sponsor a server upgrade!",
@@ -213,39 +213,39 @@
     "14": "星際語音聊天"
   },
   "vc.splash.vcServer": {
-    "0": "VC Server",
-    "13": "语音服务器",
-    "14": "語音伺服器"
+    "0": "Voice Chat Server",
+    "13": "语音聊天服务器",
+    "14": "語音聊天伺服器"
   },
   "vc.splash.optimalPlayers": {
-    "0": "Optimal Players",
-    "13": "最佳人数",
-    "14": "最佳人數"
+    "0": "Optimal Capacity",
+    "13": "最佳承载人数",
+    "14": "最佳承載人數"
   },
   "vc.splash.currentPlayers": {
-    "0": "Current Players",
-    "13": "当前人数",
-    "14": "當前人數"
+    "0": "Current Online",
+    "13": "当前在线人数",
+    "14": "當前在線人數"
   },
   "vc.splash.madeBy": {
-    "0": "Made by",
-    "13": "制作",
-    "14": "製作"
+    "0": "Developed by",
+    "13": "开发者",
+    "14": "開發者"
   },
   "vc.splash.sponsorBy": {
-    "0": "Sponsor by",
-    "13": "赞助",
-    "14": "贊助"
+    "0": "Sponsored by",
+    "13": "赞助者",
+    "14": "贊助者"
   },
 
   "vc.volume.title": {
     "0": "Player Volumes",
-    "13": "玩家音量",
-    "14": "玩家音量"
+    "13": "玩家音量调节",
+    "14": "玩家音量調節"
   },
   "vc.volume.noPlayers": {
-    "0": "No players in room",
-    "13": "房间内无玩家",
-    "14": "房間內無玩家"
+    "0": "No players in the room",
+    "13": "房间里还没有其他玩家",
+    "14": "房間裡還沒有其他玩家"
   }
 }

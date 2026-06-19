@@ -41,7 +41,14 @@ public interface IMicrophone
 public class ManualMicrophone : IMicrophone
 {
     IMicrophoneContext? context = null;
-    void IMicrophone.Initialize(IMicrophoneContext microphoneContext) => context = microphoneContext;
+    private bool _initialized;
+    private bool _warnedNull;
+
+    void IMicrophone.Initialize(IMicrophoneContext microphoneContext)
+    {
+        context = microphoneContext;
+        _initialized = true;
+    }
     void IMicrophone.Close() => context = null;
 
     private float volume = 1.0f;
@@ -89,6 +96,12 @@ public class ManualMicrophone : IMicrophone
         }
 
         // VAD gate DISABLED — same reason as WindowsMicrophone
+        if (!_initialized && !_warnedNull)
+        {
+            _warnedNull = true;
+            VoiceChatPlugin.InterstellarPlugin.Logger.LogWarning("[VC:Mic] ManualMicrophone not initialized — audio will NOT be sent.");
+            return;
+        }
         context?.SendAudio(sampleBuffer, AudioLength, 40.0, volume);
     }
 }

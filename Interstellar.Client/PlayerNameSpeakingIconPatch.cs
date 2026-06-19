@@ -47,7 +47,7 @@ public static class PlayerNameSpeakingIconPatch
         var speakingIds = new HashSet<byte>();
 
         foreach (var c in room.AllClients)
-            if (c.PlayerId != byte.MaxValue && c.Level > SpeakingThreshold)
+            if (c.PlayerId != byte.MaxValue && c.Level > SpeakingThreshold && c.IsAudible)
                 speakingIds.Add(c.PlayerId);
 
         if (PlayerControl.LocalPlayer != null

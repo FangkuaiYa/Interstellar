@@ -118,7 +118,7 @@ internal class VCClientService : WebSocketBehavior, IMessageProcessor
                 break;
             case MessageTag.UpdateMuteStatus:
                 var muteStatus = UpdateMuteStatusMessage.DeserializeWithoutTag(bytes, out read);
-                client?.UpdateMuteStatus(muteStatus.Mute);
+                client?.UpdateMuteStatus(muteStatus.Mute, muteStatus.IsImpostorRadio);
                 break;
             case MessageTag.HostSettings:
                 var hostSettings = HostSettingsMessage.DeserializeWithoutTag(bytes, out read);

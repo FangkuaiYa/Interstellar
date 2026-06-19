@@ -75,7 +75,7 @@ public static class InterstellarHudState
 
     internal static void ApplyMicState()
     {
-        VoiceChatRoom.Current?.SetMute(_micMuted);
+        VoiceChatRoom.Current?.SetMute(_micMuted, _channel == VoiceChannel.Impostor);
     }
 
     internal static void ApplySpeakerState()

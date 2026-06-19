@@ -34,7 +34,7 @@ internal interface IConnectionContext
     /// <summary>
     /// Called when a mute status update is received.
     /// </summary>
-    void OnReceiveMuteStatus(int clientId, bool isMute);
+    void OnReceiveMuteStatus(int clientId, bool isMute, bool isImpostorRadio);
 
     /// <summary>
     /// Called when a custom message is received.
@@ -92,9 +92,9 @@ internal class RoomConnection : IMessageProcessor
         Connect();
     }
 
-    public void UpdateMuteStatus(bool mute)
+    public void UpdateMuteStatus(bool mute, bool isImpostorRadio = false)
     {
-        var message = new UpdateMuteStatusMessage(mute);
+        var message = new UpdateMuteStatusMessage(mute, isImpostorRadio);
         socket.SendMessage(message);
     }
 
@@ -221,7 +221,7 @@ internal class RoomConnection : IMessageProcessor
                 break;
             case MessageTag.ShareMuteStatus:
                 var muteStatus = ShareMuteStatusMessage.DeserializeWithoutTag(bytes, out read);
-                context.OnReceiveMuteStatus(muteStatus.ClientId, muteStatus.IsMute);
+                context.OnReceiveMuteStatus(muteStatus.ClientId, muteStatus.IsMute, muteStatus.IsImpostorRadio);
                 break;
             case MessageTag.Custom:
                 CustomMessage.DeserializeForServerWithoutTag(bytes, out read);

@@ -3,6 +3,7 @@ using Interstellar.Messages.Variation;
 using Interstellar.Network;
 using Interstellar.Routing;
 using NAudio.Wave;
+using VoiceChatPlugin;
 using VoiceChatPlugin.VoiceChat;
 
 namespace Interstellar.VoiceChat;
@@ -39,9 +40,17 @@ public class VCRoom : IConnectionContext, IHasAudioPropertyNode, IMicrophoneCont
 
     public delegate void OnConnectClient(int clientId, AudioRoutingInstance routing, bool isLocalClient);
     public delegate void OnUpdateProfile(int clientId, byte playerId, string playerName);
-    public delegate void OnUpdateMuteStatus(int clientId, bool mute);
+    public delegate void OnUpdateMuteStatus(int clientId, bool mute, bool isImpostorRadio);
     public delegate void OnDisconnect(int clientId);
     public delegate void CustomMessageHandler(byte[] message);
+
+    private readonly Dictionary<int, bool> _clientImpostorRadio = new();
+    private readonly Dictionary<int, bool> _clientMuted = new();
+
+    public bool IsClientImpostorRadio(int clientId) =>
+        _clientImpostorRadio.TryGetValue(clientId, out var v) && v;
+    public bool IsClientMuted(int clientId) =>
+        _clientMuted.TryGetValue(clientId, out var v) && v;
 
     /// <summary>
     /// 
@@ -75,6 +84,10 @@ public class VCRoom : IConnectionContext, IHasAudioPropertyNode, IMicrophoneCont
     public void UpdateProfile(string playerName, byte playerId) => this.connection.UpdateProfile(playerName, playerId);
 
     /// <summary>
+    private float _localLevel;
+    public float LocalLevel => _localLevel;
+    private bool _firstAudioSent;
+
     /// Sends audio data.
     /// </summary>
     /// <param name="samples"></param>
@@ -82,8 +95,21 @@ public class VCRoom : IConnectionContext, IHasAudioPropertyNode, IMicrophoneCont
     void IMicrophoneContext.SendAudio(float[] samples, int samplesLength, double samplesMilliseconds, float coeff)
     {
         for(int i = 0; i < samplesLength; i++) samples[i] *= coeff;
+        // Track local mic peak for self-speaking indicator (always, even without loopback)
+        float max = 0f;
+        for (int i = 0; i < samplesLength; i++)
+        {
+            float abs = Math.Abs(samples[i]);
+            if (abs > max) max = abs;
+        }
+        _localLevel = max;
         if (!Mute)
         {
+            if (!_firstAudioSent)
+            {
+                _firstAudioSent = true;
+                InterstellarPlugin.Logger.LogInfo("[VC:MicTx] First audio frame sent to server.");
+            }
             this.connection.SendAudio(samples, samplesLength, samplesMilliseconds);
         }
         OnAudioSent(samples, samplesLength);
@@ -181,9 +207,11 @@ public class VCRoom : IConnectionContext, IHasAudioPropertyNode, IMicrophoneCont
         }
     }
 
-    void IConnectionContext.OnReceiveMuteStatus(int clientId, bool isMute)
+    void IConnectionContext.OnReceiveMuteStatus(int clientId, bool isMute, bool isImpostorRadio)
     {
-        onUpdateMuteStatus?.Invoke(clientId, isMute);
+        _clientMuted[clientId] = isMute;
+        _clientImpostorRadio[clientId] = isImpostorRadio;
+        onUpdateMuteStatus?.Invoke(clientId, isMute, isImpostorRadio);
     }
 
     void IConnectionContext.OnHostSettingsReceived(HostSettingsMessage settings)
@@ -229,12 +257,14 @@ public class VCRoom : IConnectionContext, IHasAudioPropertyNode, IMicrophoneCont
 
     private bool mute = false;
     public bool Mute => mute;
-    public void SetMute(bool mute)
+    public void SetMute(bool mute, bool isImpostorRadio = false)
     {
-        if (this.mute == mute) return;
+        if (this.mute == mute && _lastSentRadio == isImpostorRadio) return;
         this.mute = mute;
-        connection.UpdateMuteStatus(mute);
+        _lastSentRadio = isImpostorRadio;
+        connection.UpdateMuteStatus(mute, isImpostorRadio);
     }
+    private bool _lastSentRadio;
 
     public void Disconnect()
     {

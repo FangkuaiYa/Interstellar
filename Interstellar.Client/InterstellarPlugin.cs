@@ -50,6 +50,9 @@ public class InterstellarPlugin : BasePlugin
         TranslationHelper.Load();
         CustomServerLoader.Load();
 
+        // Register splash runner early so JoinSplashScreen works on first join
+        Il2CppInterop.Runtime.Injection.ClassInjector.RegisterTypeInIl2Cpp<JoinSplashScreen.SplashCoroutineRunner>();
+
         VCManager.RegisterSceneHook();
         InterstellarHudState.Init();
 
