@@ -16,11 +16,16 @@ static public class AudioHelpers
     static public IOpusEncoder GetOpusEncoder()
     {
         var encoder = OpusCodecFactory.CreateEncoder(48000, 1, Concentus.Enums.OpusApplication.OPUS_APPLICATION_VOIP);
-        encoder.Bitrate = 24000;                                    // 24 kbps — sufficient for clear voice
-        encoder.UseVBR = true;                                       // Variable bitrate: silence costs almost nothing
-        // DTX disabled — client-side VAD already suppresses silent frames;
-        // DTX produces comfort-noise packets that Concentus may reject.
-        encoder.SignalType = Concentus.Enums.OpusSignal.OPUS_SIGNAL_VOICE; // Tune codec for speech
+        // Aggressive bandwidth optimization: 8 kbps is excellent for clear voice with Opus
+        // (Discord uses 8-64 kbps; Teamspeak defaults to ~10 kbps; 8 kbps saves ~67% vs old 24 kbps)
+        encoder.Bitrate = 8000;
+        encoder.UseVBR = true;
+        // DTX: stops transmitting entirely during silence (saves ~50%+ bandwidth when idle)
+        // Comfort-noise packets (if any) are filtered server-side and client-side
+        encoder.UseDTX = true;
+        // In-band FEC: reduces packet loss impact without extra bandwidth for retransmits
+        encoder.UseInbandFEC = true;
+        encoder.SignalType = Concentus.Enums.OpusSignal.OPUS_SIGNAL_VOICE;
         return encoder;
     }
     static public IOpusDecoder GetOpusDecoder() => OpusCodecFactory.CreateDecoder(48000, 1);

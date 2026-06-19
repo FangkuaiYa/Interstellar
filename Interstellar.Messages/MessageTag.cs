@@ -20,4 +20,5 @@ public enum MessageTag
     RequestReload = 9,
     UpdateMuteStatus = 10,
     ShareMuteStatus = 11,
+    HostSettings = 12,
 }

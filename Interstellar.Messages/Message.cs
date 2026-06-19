@@ -136,4 +136,20 @@ public interface IMessage
         bytes = bytes.Slice(8);
         return 8;
     }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static protected int SerializeFloat(ref Span<byte> bytes, float value)
+    {
+        BitConverter.TryWriteBytes(bytes, value);
+        bytes = bytes.Slice(4);
+        return 4;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static protected int DeserializeFloat(ref ReadOnlySpan<byte> bytes, out float value)
+    {
+        value = BitConverter.ToSingle(bytes);
+        bytes = bytes.Slice(4);
+        return 4;
+    }
 }

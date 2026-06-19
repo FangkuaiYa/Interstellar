@@ -7,6 +7,7 @@ using SIPSorcery.Net;
 using System;
 using System.Text;
 using VoiceChatPlugin;
+using VoiceChatPlugin.VoiceChat;
 using WebSocketSharp;
 
 namespace Interstellar.Network;
@@ -47,6 +48,11 @@ internal interface IConnectionContext
     /// </summary>
     /// <param name="message"></param>
     void OnCustomMessageReceived(byte[] message);
+
+    /// <summary>
+    /// Called when host room settings are received from the server.
+    /// </summary>
+    void OnHostSettingsReceived(HostSettingsMessage settings);
 }
 
 /// <summary>
@@ -177,7 +183,8 @@ internal class RoomConnection : IMessageProcessor
 
         var durationRtpUnits = bufferMilliseconds.ToRtpUnits(AudioHelpers.ClockRate);
         int encodedLength = encoder.Encode(sampleBuffer, sampleLength, encodedBuffer, encodedBuffer.Length);
-        if (encodedLength <= 0) return; // Encode error or silence — skip this frame
+        // Skip frames ≤ 2 bytes: DTX comfort noise or near-silence — saves bandwidth
+        if (encodedLength <= 2) return;
         localAudioStream?.SendAudio(durationRtpUnits, new ArraySegment<byte>(encodedBuffer, 0, encodedLength));
     }
 
@@ -209,7 +216,12 @@ internal class RoomConnection : IMessageProcessor
                 context.OnReceiveMuteStatus(muteStatus.ClientId, muteStatus.IsMute);
                 break;
             case MessageTag.Custom:
+                CustomMessage.DeserializeForServerWithoutTag(bytes, out read);
                 context.OnCustomMessageReceived(bytes.ToArray());
+                break;
+            case MessageTag.HostSettings:
+                var hostSettings = HostSettingsMessage.DeserializeWithoutTag(bytes, out read);
+                context.OnHostSettingsReceived(hostSettings);
                 break;
         }
         return read;
@@ -274,6 +286,17 @@ internal class RoomConnection : IMessageProcessor
     {
         socket.SendMessage(tag);
     }
+
+    internal void SendHostSettings(VoiceChatRoomSettings s)
+    {
+        var msg = new HostSettingsMessage(
+            s.MaxChatDistance, s.WallsBlockSound, s.OnlyHearInSight,
+            s.ImpostorHearGhosts, s.OnlyGhostsCanTalk, s.HearInVent,
+            s.VentPrivateChat, s.CommsSabDisables, s.CameraCanHear,
+            s.ImpostorPrivateRadio, s.OnlyMeetingOrLobby);
+        socket.SendMessage(msg);
+    }
+
     internal void Disconnect()
     {
         connection?.Close("Client left the game.");

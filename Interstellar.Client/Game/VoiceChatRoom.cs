@@ -164,6 +164,7 @@ public class VoiceChatRoom
     public void SetLoopBack(bool lb) => _interstellar.SetLoopBack(lb);
     public void SetMute(bool mute) => _interstellar.SetMute(mute);
     public void ToggleMute() => SetMute(!Mute);
+    public void SendHostSettings(VoiceChatRoomSettings s) => _interstellar.SendHostSettings(s);
 
     public void SetMicrophone(string deviceName)
     {

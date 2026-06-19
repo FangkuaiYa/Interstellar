@@ -1,10 +1,15 @@
 using BepInEx.Configuration;
+using System.Collections.Generic;
+using UnityEngine;
 
 namespace VoiceChatPlugin.VoiceChat;
 
 public static class VoiceChatConfig
 {
     public static VoiceChatRoomSettings SyncedRoomSettings { get; } = new();
+
+    /// <summary>Fired when synced room settings change (received from host via voice server).</summary>
+    public static Action<VoiceChatRoomSettings>? OnSyncedSettingsChanged;
 
     public static string MicrophoneDevice => _mic?.Value ?? "";
     public static string SpeakerDevice => _speaker?.Value ?? "";
@@ -30,6 +35,53 @@ public static class VoiceChatConfig
     private static ConfigEntry<bool>? _hostWallsBlock, _hostSight, _hostImpGhost;
     private static ConfigEntry<bool>? _hostOnlyGhost, _hostHearVent, _hostVentChat;
     private static ConfigEntry<bool>? _hostCommSab, _hostCamera, _hostImpRadio, _hostMeetingOnly;
+
+    /// <summary>Cached list of microphone device names for UI cycling.</summary>
+    public static List<string> MicrophoneDevices { get; } = new();
+    /// <summary>Cached list of speaker device names for UI cycling.</summary>
+    public static List<string> SpeakerDevices { get; } = new();
+
+    /// <summary>Whether device selection is supported on this platform.</summary>
+    public static bool DeviceSelectionSupported =>
+        Application.platform != RuntimePlatform.Android;
+
+    private static bool _devicesCached;
+
+    /// <summary>Refreshes the cached device lists. Safe to call on any platform — no-op on Android.
+    /// Subsequent calls after the first successful enumeration are no-ops unless forced.</summary>
+    public static void RefreshDeviceCaches(bool force = false)
+    {
+        if (!DeviceSelectionSupported) return;
+        if (_devicesCached && !force) return;
+
+        MicrophoneDevices.Clear();
+        MicrophoneDevices.Add(""); // Default
+        try
+        {
+            for (int i = 0; i < NAudio.Wave.WaveInEvent.DeviceCount; i++)
+            {
+                var c = NAudio.Wave.WaveInEvent.GetCapabilities(i);
+                if (!string.IsNullOrWhiteSpace(c.ProductName))
+                    MicrophoneDevices.Add(c.ProductName);
+            }
+        }
+        catch { }
+
+        SpeakerDevices.Clear();
+        SpeakerDevices.Add(""); // Default
+        try
+        {
+            using var e = new NAudio.CoreAudioApi.MMDeviceEnumerator();
+            foreach (var d in e.EnumerateAudioEndPoints(
+                NAudio.CoreAudioApi.DataFlow.Render,
+                NAudio.CoreAudioApi.DeviceState.Active))
+                if (!string.IsNullOrWhiteSpace(d.FriendlyName))
+                    SpeakerDevices.Add(d.FriendlyName);
+        }
+        catch { }
+
+        _devicesCached = true;
+    }
 
     public static void Init(ConfigFile cfg)
     {

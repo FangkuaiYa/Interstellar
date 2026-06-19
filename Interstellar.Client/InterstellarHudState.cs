@@ -98,10 +98,11 @@ public static class InterstellarHudState
         var cur = VoiceChatConfig.SyncedRoomSettings;
         if (_lastSentSettings != null && cur.ContentEquals(_lastSentSettings)) return;
 
-        VoiceChatRoomSettings.SendToAll(cur);
+        // Send through voice server instead of Among Us RPC
+        VoiceChatRoom.Current?.SendHostSettings(cur);
         _lastSentSettings = new VoiceChatRoomSettings();
         _lastSentSettings.Apply(cur);
-        InterstellarPlugin.Logger.LogInfo("[VC] Room settings synced.");
+        InterstellarPlugin.Logger.LogInfo("[VC] Room settings synced via voice server.");
     }
 
     private static void DestroyButtons()

@@ -1,7 +1,9 @@
 ﻿using Interstellar.Messages;
+using Interstellar.Messages.Variation;
 using Interstellar.Network;
 using Interstellar.Routing;
 using NAudio.Wave;
+using VoiceChatPlugin.VoiceChat;
 
 namespace Interstellar.VoiceChat;
 
@@ -182,6 +184,29 @@ public class VCRoom : IConnectionContext, IHasAudioPropertyNode, IMicrophoneCont
     void IConnectionContext.OnReceiveMuteStatus(int clientId, bool isMute)
     {
         onUpdateMuteStatus?.Invoke(clientId, isMute);
+    }
+
+    void IConnectionContext.OnHostSettingsReceived(HostSettingsMessage settings)
+    {
+        var s = VoiceChatConfig.SyncedRoomSettings;
+        s.MaxChatDistance = settings.MaxChatDistance;
+        s.WallsBlockSound = settings.WallsBlockSound;
+        s.OnlyHearInSight = settings.OnlyHearInSight;
+        s.ImpostorHearGhosts = settings.ImpostorHearGhosts;
+        s.OnlyGhostsCanTalk = settings.OnlyGhostsCanTalk;
+        s.HearInVent = settings.HearInVent;
+        s.VentPrivateChat = settings.VentPrivateChat;
+        s.CommsSabDisables = settings.CommsSabDisables;
+        s.CameraCanHear = settings.CameraCanHear;
+        s.ImpostorPrivateRadio = settings.ImpostorPrivateRadio;
+        s.OnlyMeetingOrLobby = settings.OnlyMeetingOrLobby;
+        VoiceChatConfig.OnSyncedSettingsChanged?.Invoke(s);
+        VoiceChatPlugin.InterstellarPlugin.Logger.LogInfo("[VC] Host settings received via voice server.");
+    }
+
+    public void SendHostSettings(VoiceChatRoomSettings s)
+    {
+        connection.SendHostSettings(s);
     }
 
     void OnAudioSent(float[] buffer, int count)

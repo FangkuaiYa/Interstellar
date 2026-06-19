@@ -48,75 +48,64 @@ public class ManualMicrophone : IMicrophone
     void IMicrophone.SetVolume(float volume) => this.volume = Math.Clamp(volume, 0.0f, 1.0f);
 
 
-    private const int AudioLength1 = (int)(AudioHelpers.ClockRate * 0.020f); //20ms(50FPS)
-    private const int AudioLength2 = (int)(AudioHelpers.ClockRate * 0.040f); //40ms(25FPS)
-    private float[] cachedAudio = new float[AudioLength2];
+    // Always 40ms frames (25 packets/sec) — halves packet rate vs mixing 20ms,
+    // cutting RTP+WebSocket per-packet overhead in half with negligible latency impact.
+    private const int AudioLength = (int)(AudioHelpers.ClockRate * 0.040f); // 40ms @ 48kHz = 1920 samples
+    private float[] cachedAudio = new float[AudioLength];
     private int cachedLength = 0;
-    private float[] sampleBuffer = new float[AudioLength2];
+    private float[] sampleBuffer = new float[AudioLength];
     public float Level => level * volume;
     private float level = 0f;
 
+    // VAD hangover: keep sending for N frames after voice drops below threshold
+    // to avoid chopping off the ends of words or quiet syllables.
+    private int hangoverFrames = 0;
+    private const int HangoverMax = 3; // 3 frames × 40ms = 120ms of trailing audio
+
     public void PushAudioData(float[] audioData)
     {
-        double bufferMilliseconds;
-        int buffers;
-
         float max = audioData.Max();
-        level -= (float)audioData.Length / (float)AudioHelpers.ClockRate * 0.5f;
-        if(level < 0f) level = 0f;
+        // Faster decay (0.75f vs old 0.5f) — cuts off silence more aggressively, saving bandwidth
+        level -= (float)audioData.Length / (float)AudioHelpers.ClockRate * 0.75f;
+        if (level < 0f) level = 0f;
         if (max > level) level = max;
 
-        if (cachedLength + audioData.Length >= AudioLength2)
+        if (cachedLength + audioData.Length >= AudioLength)
         {
-            bufferMilliseconds = 40.0;
-            buffers = AudioLength2;
-
-            // Longest pattern: discard old data and send the most recent 40ms.
-            if (AudioLength2 > audioData.Length)
+            // Discard old data and send the most recent 40ms.
+            if (AudioLength > audioData.Length)
             {
-                int cLength = AudioLength2 - audioData.Length;
+                int cLength = AudioLength - audioData.Length;
                 cachedAudio.AsSpan(cachedLength - cLength, cLength).CopyTo(sampleBuffer);
                 audioData.CopyTo(sampleBuffer.AsSpan(cLength, audioData.Length));
             }
             else
             {
-                audioData.AsSpan(audioData.Length - AudioLength2, AudioLength2).CopyTo(sampleBuffer);
+                audioData.AsSpan(audioData.Length - AudioLength, AudioLength).CopyTo(sampleBuffer);
             }
             cachedLength = 0;
         }
-        else if (cachedLength + audioData.Length >= AudioLength1)
-        {
-            bufferMilliseconds = 20.0;
-            buffers = AudioLength1;
-            // Medium pattern: send the oldest 20ms.
-            if (AudioLength1 < cachedLength)
-            {
-                cachedAudio.AsSpan(0, AudioLength1).CopyTo(sampleBuffer);
-                cachedAudio.AsSpan(AudioLength1, cachedLength - AudioLength1).CopyTo(cachedAudio);
-                cachedLength -= AudioLength1;
-            }
-            else
-            {
-                cachedAudio.AsSpan(0, cachedLength).CopyTo(sampleBuffer);
-                int cLength = AudioLength1 - cachedLength;
-                audioData.AsSpan(0, cLength).CopyTo(sampleBuffer.AsSpan(cachedLength, cLength));
-                int leftLength = audioData.Length - cLength;
-                audioData.AsSpan(cLength, leftLength).CopyTo(cachedAudio);
-                cachedLength = leftLength;
-            }
-        }
         else
         {
-            // Shortest pattern: cache and send on the next call.
+            // Not enough data: cache and wait for next call
             audioData.CopyTo(cachedAudio.AsSpan(cachedLength, audioData.Length));
             cachedLength += audioData.Length;
             return;
         }
 
-        // VAD gate: skip encoding/sending when below silence threshold
-        const float SilenceThreshold = 0.005f; // -46 dBFS
+        // VAD gate with hangover: skip encoding/sending when below silence threshold
+        const float SilenceThreshold = 0.008f; // ~-42 dBFS — more aggressive than old 0.005 (-46 dBFS)
         if (level >= SilenceThreshold)
-            context?.SendAudio(sampleBuffer, buffers, bufferMilliseconds, volume);
+        {
+            hangoverFrames = HangoverMax;
+            context?.SendAudio(sampleBuffer, AudioLength, 40.0, volume);
+        }
+        else if (hangoverFrames > 0)
+        {
+            hangoverFrames--;
+            context?.SendAudio(sampleBuffer, AudioLength, 40.0, volume);
+        }
+        // else: true silence — frame is dropped entirely, saving ~40 bytes + overhead
     }
 }
 
@@ -149,6 +138,10 @@ public class WindowsMicrophone : IMicrophone
     public float Level => level * volume;
     private float level = 0f;
 
+    // VAD hangover: keep sending for N frames after voice drops below threshold
+    private int hangoverFrames = 0;
+    private const int HangoverMax = 3; // 3 frames × 40ms = 120ms of trailing audio
+
     public WindowsMicrophone(string deviceName)
     {
         var count = WaveInEvent.DeviceCount;
@@ -177,13 +170,23 @@ public class WindowsMicrophone : IMicrophone
             if (abs > max) max = abs;
         }
 
-        level -= (float)samples / (float)AudioHelpers.ClockRate * 0.5f;
+        // Faster decay (0.75f vs old 0.5f) — cuts off silence more aggressively
+        level -= (float)samples / (float)AudioHelpers.ClockRate * 0.75f;
         if (level < 0f) level = 0f;
         if (max > level) level = max;
 
-        // VAD gate: skip encoding/sending when below silence threshold
-        const float SilenceThreshold = 0.005f; // -46 dBFS
+        // VAD gate with hangover: skip encoding/sending when below silence threshold
+        const float SilenceThreshold = 0.008f; // ~-42 dBFS — more aggressive than old 0.005 (-46 dBFS)
         if (level >= SilenceThreshold)
+        {
+            hangoverFrames = HangoverMax;
             context?.SendAudio(sampleBuffer, samples, waveIn.BufferMilliseconds, volume);
+        }
+        else if (hangoverFrames > 0)
+        {
+            hangoverFrames--;
+            context?.SendAudio(sampleBuffer, samples, waveIn.BufferMilliseconds, volume);
+        }
+        // else: true silence — frame is dropped entirely, saving bandwidth
     }
 }

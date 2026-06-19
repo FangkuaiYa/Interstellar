@@ -45,11 +45,19 @@ internal class VCClient
         this.service.SendClientLeft(clientId);
     }
 
-    /// <summary>Broadcasts own audio to the room. Skips forwarding when muted.</summary>
+    /// <summary>Broadcasts own audio to the room. Skips forwarding when muted or frame is effectively silence.</summary>
     public void BroadcastAudio(uint durationRtpUnits, byte[] encodedAudio)
     {
         if (IsMute) return; // Server-side mute guard: don't forward audio from muted clients
+        // Skip frames ≤ 2 bytes: DTX comfort noise or near-silence — saves pointless relay bandwidth
+        if (encodedAudio.Length <= 2) return;
         myRoom.Broadcast(ClientId, durationRtpUnits, encodedAudio);
+    }
+
+    /// <summary>Broadcasts host room settings to all other clients.</summary>
+    public void BroadcastHostSettings(HostSettingsMessage message)
+    {
+        myRoom.Broadcast(ClientId, message);
     }
 
     public void BroadcastRawMessage(ReadOnlySpan<byte> message)
