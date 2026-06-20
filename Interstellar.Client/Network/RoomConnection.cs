@@ -132,8 +132,6 @@ internal class RoomConnection : IMessageProcessor
 
     private void SetUpRTCConnection()
     {
-        // Function to pass audio frames
-        float[] buffer = new float[2048];
         Dictionary<int, IOpusDecoder> decoders = new(64);
         HashSet<int> decodeErrors = new();
         // Diagnostic: track first audio frame reception for Android debugging
@@ -157,6 +155,9 @@ internal class RoomConnection : IMessageProcessor
                 if (!decoders.ContainsKey(id)) decoders[id] = AudioHelpers.GetOpusDecoder();
 
                 var decoder = decoders[id];
+                // Per-call buffer to prevent race condition when multiple audio frames
+                // arrive concurrently from the WebSocket callback thread.
+                float[] buffer = new float[2048];
                 int length = decoder.Decode(encodedAudio, buffer, buffer.Length);
                 context.OnAudioFrameReceived(id, buffer, length);
             }

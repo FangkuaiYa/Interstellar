@@ -31,6 +31,7 @@ public class VCRoom : IConnectionContext, IHasAudioPropertyNode, IMicrophoneCont
     private RoomConnection connection;
     private AudioManager audioManager;
     private Dictionary<int, AudioRoutingInstance> audioInstances = new();
+    private readonly object _audioLock = new();
     private readonly OnConnectClient? onConnectClient;
     private readonly OnUpdateProfile? onUpdateProfile;
     private readonly CustomMessageHandler? onCustomMessage;
@@ -47,10 +48,14 @@ public class VCRoom : IConnectionContext, IHasAudioPropertyNode, IMicrophoneCont
     private readonly Dictionary<int, bool> _clientImpostorRadio = new();
     private readonly Dictionary<int, bool> _clientMuted = new();
 
-    public bool IsClientImpostorRadio(int clientId) =>
-        _clientImpostorRadio.TryGetValue(clientId, out var v) && v;
-    public bool IsClientMuted(int clientId) =>
-        _clientMuted.TryGetValue(clientId, out var v) && v;
+    public bool IsClientImpostorRadio(int clientId)
+    {
+        lock (_audioLock) { return _clientImpostorRadio.TryGetValue(clientId, out var v) && v; }
+    }
+    public bool IsClientMuted(int clientId)
+    {
+        lock (_audioLock) { return _clientMuted.TryGetValue(clientId, out var v) && v; }
+    }
 
     /// <summary>
     /// 
@@ -145,21 +150,30 @@ public class VCRoom : IConnectionContext, IHasAudioPropertyNode, IMicrophoneCont
 
     private AudioRoutingInstance GetOrCreateAudioInstance(int clientId, bool asLocalClient)
     {
-        if (!audioInstances.TryGetValue(clientId, out var instance))
+        lock (_audioLock)
         {
-            instance = audioManager.Generate(clientId);
-            onConnectClient?.Invoke(clientId, instance, asLocalClient);
-            audioInstances[clientId] = instance;
-            if (pooledProfile.TryGetValue(clientId, out var profile))
+            if (!audioInstances.TryGetValue(clientId, out var instance))
             {
-                onUpdateProfile?.Invoke(clientId, profile.id, profile.name);
-                pooledProfile.Remove(clientId);
+                instance = audioManager.Generate(clientId);
+                onConnectClient?.Invoke(clientId, instance, asLocalClient);
+                audioInstances[clientId] = instance;
+                if (pooledProfile.TryGetValue(clientId, out var profile))
+                {
+                    onUpdateProfile?.Invoke(clientId, profile.id, profile.name);
+                    pooledProfile.Remove(clientId);
+                }
             }
+            return instance;
         }
-        return instance;
     }
 
-    private bool TryGetAudioInstance(int clientId, out AudioRoutingInstance? instance) => audioInstances.TryGetValue(clientId, out instance);
+    private bool TryGetAudioInstance(int clientId, out AudioRoutingInstance? instance)
+    {
+        lock (_audioLock)
+        {
+            return audioInstances.TryGetValue(clientId, out instance);
+        }
+    }
 
     AudioRoutingInstanceNode IHasAudioPropertyNode.GetProperty(int propertyId) => (audioManager as IHasAudioPropertyNode).GetProperty(propertyId);
 
@@ -171,11 +185,14 @@ public class VCRoom : IConnectionContext, IHasAudioPropertyNode, IMicrophoneCont
 
     void IConnectionContext.OnClientDisconnected(int clientId)
     {
-        if(TryGetAudioInstance(clientId, out var instance))
+        lock (_audioLock)
         {
-            audioManager.Remove(clientId);
-            audioInstances.Remove(clientId);
-            onDisconnect?.Invoke(clientId);
+            if(audioInstances.TryGetValue(clientId, out var instance))
+            {
+                audioManager.Remove(clientId);
+                audioInstances.Remove(clientId);
+                onDisconnect?.Invoke(clientId);
+            }
         }
     }
 
@@ -197,20 +214,26 @@ public class VCRoom : IConnectionContext, IHasAudioPropertyNode, IMicrophoneCont
     Dictionary<int, (string name, byte id)> pooledProfile = [];
     void IConnectionContext.OnClientProfileUpdated(int clientId, string playerName, byte playerId)
     {
-        if (TryGetAudioInstance(clientId, out _))
+        lock (_audioLock)
         {
-            onUpdateProfile?.Invoke(clientId, playerId, playerName);
-        }
-        else
-        {
-            pooledProfile[clientId] = (playerName, playerId);
+            if (audioInstances.TryGetValue(clientId, out _))
+            {
+                onUpdateProfile?.Invoke(clientId, playerId, playerName);
+            }
+            else
+            {
+                pooledProfile[clientId] = (playerName, playerId);
+            }
         }
     }
 
     void IConnectionContext.OnReceiveMuteStatus(int clientId, bool isMute, bool isImpostorRadio)
     {
-        _clientMuted[clientId] = isMute;
-        _clientImpostorRadio[clientId] = isImpostorRadio;
+        lock (_audioLock)
+        {
+            _clientMuted[clientId] = isMute;
+            _clientImpostorRadio[clientId] = isImpostorRadio;
+        }
         onUpdateMuteStatus?.Invoke(clientId, isMute, isImpostorRadio);
     }
 
