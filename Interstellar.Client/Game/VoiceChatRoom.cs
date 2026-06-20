@@ -32,10 +32,13 @@ public class VoiceChatRoom
     public float LocalMicLevel => _interstellar.LocalLevel;
     public bool IsClientImpostorRadio(int clientId) => _interstellar.IsClientImpostorRadio(clientId);
     public bool Mute => _interstellar.Mute;
+    public bool HasSpeaker => _interstellar.Speaker != null;
     public int SampleRate => _interstellar.SampleRate;
 
     private LevelMeterRouter.Property? _localMicMeter;
 
+    private int _androidNoRxFrames;
+    private static bool _androidDidFullRestart;
     private bool _commsSabActive;
     private float _commsSabCheckTimer;
 
@@ -60,6 +63,7 @@ public class VoiceChatRoom
     {
         Current?.Close();
         Current = null;
+        _androidDidFullRestart = false;
     }
 
     private VoiceChatRoom(string region, string roomCode)
@@ -147,6 +151,10 @@ public class VoiceChatRoom
         {
             SetupAndroidMicrophone();
             SetupAndroidSpeaker();
+            // Kick off mic permission request + AudioRecord startup early
+            // so the pipeline is warm by the time WebSocket/RTC connects.
+            _androidMic?.Warmup();
+            _androidSpeaker?.Warmup();
         }
         else
         {
@@ -261,6 +269,33 @@ public class VoiceChatRoom
         var localPlayer = PlayerControl.LocalPlayer;
         Vector2? listenerPos = localPlayer ? (Vector2)localPlayer.transform.position : null;
         bool localInVent = localPlayer != null && localPlayer.inVent;
+
+        // Android first-join watchdog: if no incoming audio is received
+        // within ~3s of the room going active, fully restart the connection.
+        // Flag is static so it survives the restart and only fires once.
+        if (IsAndroid && !_androidDidFullRestart && listenerPos.HasValue)
+        {
+            bool hasRx = false;
+            foreach (var c in _clients.Values)
+                if (c.Level > 0f) { hasRx = true; break; }
+            if (hasRx)
+            {
+                _androidDidFullRestart = true;
+            }
+            else
+            {
+                _androidNoRxFrames++;
+                if (_androidNoRxFrames >= 180)
+                {
+                    InterstellarPlugin.Logger.LogWarning(
+                        "[VC] Android: no incoming audio after 3s — restarting room.");
+                    _androidDidFullRestart = true;
+                    Close();
+                    RestartForCurrentGame();
+                    return;
+                }
+            }
+        }
 
         List<SpeakerCache> speakerCache = new();
         if (listenerPos.HasValue)

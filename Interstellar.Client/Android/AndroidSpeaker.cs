@@ -60,6 +60,16 @@ public class AndroidSpeaker : IDisposable
         InterstellarPlugin.Logger.LogInfo("[VC:AndroidSpk] Started PCM callback speaker.");
     }
 
+    /// <summary>Call early to ensure AudioSource is created and ready
+    /// before the WebSocket connection completes.</summary>
+    public void Warmup()
+    {
+        if (!_started && !_disposed && _gameObject != null)
+        {
+            StartPlayback();
+        }
+    }
+
     public void Update()
     {
         if (!_started || _disposed) return;
@@ -96,9 +106,9 @@ public class AndroidSpeaker : IDisposable
             Array.Clear(_callbackScratch, 0, _callbackScratch.Length);
         }
 
-        // Moderate gain boost — Android AudioTrack can be quieter than desktop,
-        // but too much gain causes clipping distortion and muffled sound.
-        const float androidSpeakerGain = 1.15f;
+        // Android AudioTrack output is significantly quieter than desktop.
+        // 2x gain brings speech to a usable level; Clamp prevents hard clipping.
+        const float androidSpeakerGain = 2f;
         for (int i = 0; i < data.Length; i++)
         {
             float sample = _callbackScratch[i] * androidSpeakerGain;

@@ -10,8 +10,6 @@ internal static class InterstellarRoomDriver
     private static bool _wasInIntro = false;
     private static bool _wasInEndGame = false;
     private static bool _splashShownThisGame;
-    private static int _lastDeviceCount = -1;
-    private static float _deviceCheckTimer;
 
     private static bool IsLocalServer()
     {
@@ -33,7 +31,6 @@ internal static class InterstellarRoomDriver
                 VoiceChatRoom.CloseCurrentRoom();
             _wasInIntro = _wasInEndGame = false;
             _splashShownThisGame = false;
-            _lastDeviceCount = -1;
             VoiceChatServerState.Reset();
             return;
         }
@@ -55,7 +52,7 @@ internal static class InterstellarRoomDriver
 
             // Force profile send after room creation to ensure server
             // receives it even on first join before TryUpdateLocalProfile fires.
-            VoiceChatRoom.Current.ForceUpdateLocalProfile();
+            VoiceChatRoom.Current!.ForceUpdateLocalProfile();
 
             InterstellarPlugin.Logger.LogInfo($"[VC] Room started: region={region} room={roomId}");
 
@@ -95,28 +92,5 @@ internal static class InterstellarRoomDriver
         try { VoiceChatRoom.Current.Update(); }
         catch (System.Exception ex)
         { InterstellarPlugin.Logger.LogError("[VC] Room update error: " + ex); }
-
-        // Periodically detect audio device changes (e.g., headset plugged in/out).
-        // When the device count changes, re-initialize the speaker to prevent
-        // duplicate output on old + new device simultaneously.
-        _deviceCheckTimer -= Time.deltaTime;
-        if (_deviceCheckTimer <= 0f)
-        {
-            _deviceCheckTimer = 3f;
-            if (VoiceChatConfig.DeviceSelectionSupported)
-            {
-                VoiceChatConfig.RefreshDeviceCaches(true);
-                int currentCount = VoiceChatConfig.MicrophoneDevices.Count
-                                  + VoiceChatConfig.SpeakerDevices.Count;
-                if (_lastDeviceCount >= 0 && currentCount != _lastDeviceCount
-                    && VoiceChatRoom.Current != null)
-                {
-                    InterstellarPlugin.Logger.LogInfo(
-                        $"[VC] Audio device change detected (prev={_lastDeviceCount} cur={currentCount}). Re-initializing speaker.");
-                    VoiceChatRoom.Current.SetSpeaker(VoiceChatConfig.SpeakerDevice);
-                }
-                _lastDeviceCount = currentCount;
-            }
-        }
     }
 }

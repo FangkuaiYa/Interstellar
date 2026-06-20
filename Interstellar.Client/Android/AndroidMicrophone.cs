@@ -54,6 +54,13 @@ public class AndroidMicrophone : IDisposable
         _manualMic = new ManualMicrophone();
     }
 
+    /// <summary>Call early to kick off permission request and AudioRecord startup
+    /// before the WebSocket connection completes.</summary>
+    public void Warmup()
+    {
+        EnsureStarted();
+    }
+
     public void Update()
     {
         if (!EnsureStarted())

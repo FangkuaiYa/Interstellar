@@ -80,21 +80,21 @@ public static class InterstellarHudState
 
     internal static void ApplySpeakerState()
     {
-        // When muted, completely disable the speaker device to stop audio
-        // processing and prevent receiving unnecessary server data.
-        // When unmuted, recreate the speaker from config.
         var room = VoiceChatRoom.Current;
         if (room == null) return;
 
         if (_speakerMuted)
         {
             room.SetMasterVolume(0f);
-            room.SetSpeaker(null);
+            room.SetSpeaker(null!);
         }
         else
         {
-            room.SetSpeaker(VoiceChatConfig.SpeakerDevice);
             room.SetMasterVolume(VoiceChatConfig.MasterVolume);
+            // Only recreate the speaker if it was previously destroyed
+            // (muted state) — avoids unnecessary stop/restart during init.
+            if (!room.HasSpeaker)
+                room.SetSpeaker(VoiceChatConfig.SpeakerDevice);
         }
     }
 
@@ -240,7 +240,7 @@ public static class InterstellarHudState
             if (_speakerMuted)
             {
                 room.SetMasterVolume(0f);
-                room.SetSpeaker(null);
+                room.SetSpeaker(null!);
             }
             else
             {
