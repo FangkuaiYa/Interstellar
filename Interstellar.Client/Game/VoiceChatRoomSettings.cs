@@ -10,6 +10,7 @@ public sealed class VoiceChatRoomSettings
     public bool ImpostorHearGhosts { get; internal set; }
     public bool OnlyGhostsCanTalk { get; internal set; }
     public bool HearInVent { get; internal set; }
+    public bool HearVentPlayers { get; internal set; }
     public bool VentPrivateChat { get; internal set; }
     public bool CommsSabDisables { get; internal set; }
     public bool CameraCanHear { get; internal set; }
@@ -28,6 +29,7 @@ public sealed class VoiceChatRoomSettings
         ImpostorHearGhosts = false;
         OnlyGhostsCanTalk = false;
         HearInVent = true;
+        HearVentPlayers = true;
         VentPrivateChat = false;
         CommsSabDisables = true;
         CameraCanHear = true;
@@ -43,6 +45,7 @@ public sealed class VoiceChatRoomSettings
         ImpostorHearGhosts = o.ImpostorHearGhosts;
         OnlyGhostsCanTalk = o.OnlyGhostsCanTalk;
         HearInVent = o.HearInVent;
+        HearVentPlayers = o.HearVentPlayers;
         VentPrivateChat = o.VentPrivateChat;
         CommsSabDisables = o.CommsSabDisables;
         CameraCanHear = o.CameraCanHear;
@@ -59,6 +62,7 @@ public sealed class VoiceChatRoomSettings
             && ImpostorHearGhosts == o.ImpostorHearGhosts
             && OnlyGhostsCanTalk == o.OnlyGhostsCanTalk
             && HearInVent == o.HearInVent
+            && HearVentPlayers == o.HearVentPlayers
             && VentPrivateChat == o.VentPrivateChat
             && CommsSabDisables == o.CommsSabDisables
             && CameraCanHear == o.CameraCanHear

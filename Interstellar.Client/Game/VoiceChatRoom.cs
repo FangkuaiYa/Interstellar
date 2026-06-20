@@ -134,11 +134,10 @@ public class VoiceChatRoom
                     _clients.Remove(clientId);
                     InterstellarPlugin.Logger.LogInfo($"[VC] Client {clientId} disconnected.");
                 },
-            // Android uses a larger jitter buffer than desktop because mobile
-            // networks deliver audio frames in irregular bursts. Too small a
-            // buffer causes underruns (read returns partial data + silence).
-            // 400ms target keeps latency acceptable while absorbing jitter.
-            }.SetBufferLength(IsAndroid ? 19200 : 9600, IsAndroid ? 19200 : 2048));
+            // Android jitter buffer: 240ms (11520 samples at 48kHz).
+            // Smaller than the old 400ms to reduce latency and perceived echo,
+            // but still large enough to absorb mobile network jitter.
+            }.SetBufferLength(IsAndroid ? 11520 : 9600, IsAndroid ? 11520 : 2048));
 
         _masterVolumeProperty = masterRouter.GetProperty(_interstellar);
         SetMasterVolume(VoiceChatConfig.MasterVolume);

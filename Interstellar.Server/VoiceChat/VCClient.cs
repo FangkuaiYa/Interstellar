@@ -56,9 +56,10 @@ internal class VCClient
         myRoom.Broadcast(ClientId, durationRtpUnits, encodedAudio);
     }
 
-    /// <summary>Broadcasts host room settings to all other clients.</summary>
+    /// <summary>Broadcasts host room settings to all other clients and caches them for new joins.</summary>
     public void BroadcastHostSettings(HostSettingsMessage message)
     {
+        myRoom.LastHostSettings = message;
         myRoom.Broadcast(ClientId, message);
     }
 

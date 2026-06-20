@@ -23,6 +23,7 @@ public static class VoiceChatConfig
     public static bool HostImpostorHearGhosts => _hostImpGhost?.Value ?? false;
     public static bool HostOnlyGhostsCanTalk => _hostOnlyGhost?.Value ?? false;
     public static bool HostHearInVent => _hostHearVent?.Value ?? true;
+    public static bool HostHearVentPlayers => _hostHearVentPlayers?.Value ?? true;
     public static bool HostVentPrivateChat => _hostVentChat?.Value ?? false;
     public static bool HostCommsSabDisables => _hostCommSab?.Value ?? true;
     public static bool HostCameraCanHear => _hostCamera?.Value ?? true;
@@ -45,7 +46,7 @@ public static class VoiceChatConfig
     private static ConfigEntry<float>? _masterVol, _micVol;
     private static ConfigEntry<float>? _hostMaxDist;
     private static ConfigEntry<bool>? _hostWallsBlock, _hostSight, _hostImpGhost;
-    private static ConfigEntry<bool>? _hostOnlyGhost, _hostHearVent, _hostVentChat;
+    private static ConfigEntry<bool>? _hostOnlyGhost, _hostHearVent, _hostHearVentPlayers, _hostVentChat;
     private static ConfigEntry<bool>? _hostCommSab, _hostCamera, _hostImpRadio, _hostMeetingOnly;
     private static ConfigEntry<bool>? _useApiServerList, _forceVoiceServerEnabled;
     private static ConfigEntry<string>? _customServerListJson, _forceVoiceServerUrl;
@@ -117,6 +118,7 @@ public static class VoiceChatConfig
         _hostImpGhost = cfg.Bind("VoiceChat.Room", "ImpostorHearGhosts", false);
         _hostOnlyGhost = cfg.Bind("VoiceChat.Room", "OnlyGhostsCanTalk", false);
         _hostHearVent = cfg.Bind("VoiceChat.Room", "HearInVent", true);
+        _hostHearVentPlayers = cfg.Bind("VoiceChat.Room", "HearVentPlayers", true);
         _hostVentChat = cfg.Bind("VoiceChat.Room", "VentPrivateChat", false);
         _hostCommSab = cfg.Bind("VoiceChat.Room", "CommsSabDisables", true);
         _hostCamera = cfg.Bind("VoiceChat.Room", "CameraCanHear", true);
@@ -146,6 +148,7 @@ public static class VoiceChatConfig
     public static void SetHostImpostorHearGhosts(bool v) => _hostImpGhost!.Value = v;
     public static void SetHostOnlyGhostsCanTalk(bool v) => _hostOnlyGhost!.Value = v;
     public static void SetHostHearInVent(bool v) => _hostHearVent!.Value = v;
+    public static void SetHostHearVentPlayers(bool v) => _hostHearVentPlayers!.Value = v;
     public static void SetHostVentPrivateChat(bool v) => _hostVentChat!.Value = v;
     public static void SetHostCommsSabDisables(bool v) => _hostCommSab!.Value = v;
     public static void SetHostCameraCanHear(bool v) => _hostCamera!.Value = v;
@@ -161,6 +164,7 @@ public static class VoiceChatConfig
         s.ImpostorHearGhosts = HostImpostorHearGhosts;
         s.OnlyGhostsCanTalk = HostOnlyGhostsCanTalk;
         s.HearInVent = HostHearInVent;
+        s.HearVentPlayers = HostHearVentPlayers;
         s.VentPrivateChat = HostVentPrivateChat;
         s.CommsSabDisables = HostCommsSabDisables;
         s.CameraCanHear = HostCameraCanHear;

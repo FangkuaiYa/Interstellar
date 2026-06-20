@@ -50,8 +50,10 @@ public static class PlayerNameSpeakingIconPatch
             if (c.PlayerId != byte.MaxValue && c.Level > SpeakingThreshold && c.IsAudible)
                 speakingIds.Add(c.PlayerId);
 
+        // Don't show self-speaking indicator when locally muted
         if (PlayerControl.LocalPlayer != null
-            && room.LocalMicLevel > SpeakingThreshold)
+            && room.LocalMicLevel > SpeakingThreshold
+            && !room.Mute)
             speakingIds.Add(PlayerControl.LocalPlayer.PlayerId);
 
         // ----- remove icons for silent players -----
@@ -114,7 +116,20 @@ public static class PlayerNameSpeakingIconPatch
 
         var sr = go.AddComponent<SpriteRenderer>();
         sr.sprite = _speakingSprite;
-        sr.sortingOrder = 10;
+
+        // Copy sorting layer and order from the parent nameText's MeshRenderer
+        // so the microphone icon respects walls/shadows the same way the name does.
+        var parentRenderer = pc.cosmetics.nameText.GetComponent<MeshRenderer>();
+        if (parentRenderer != null)
+        {
+            sr.sortingLayerName = parentRenderer.sortingLayerName;
+            sr.sortingLayerID = parentRenderer.sortingLayerID;
+            sr.sortingOrder = parentRenderer.sortingOrder + 1;
+        }
+        else
+        {
+            sr.sortingOrder = 10;
+        }
 
         IconCache[playerId] = go;
     }

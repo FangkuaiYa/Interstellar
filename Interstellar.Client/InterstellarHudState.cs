@@ -80,8 +80,8 @@ public static class InterstellarHudState
 
     internal static void ApplySpeakerState()
     {
-        // FIX: Speaker mute bug — when muted, null the speaker to
-        // completely stop audio output and prevent buffer noise loop.
+        // When muted, completely disable the speaker device to stop audio
+        // processing and prevent receiving unnecessary server data.
         // When unmuted, recreate the speaker from config.
         var room = VoiceChatRoom.Current;
         if (room == null) return;
@@ -89,9 +89,11 @@ public static class InterstellarHudState
         if (_speakerMuted)
         {
             room.SetMasterVolume(0f);
+            room.SetSpeaker(null);
         }
         else
         {
+            room.SetSpeaker(VoiceChatConfig.SpeakerDevice);
             room.SetMasterVolume(VoiceChatConfig.MasterVolume);
         }
     }
@@ -229,18 +231,20 @@ public static class InterstellarHudState
     {
         _speakerMuted = !_speakerMuted;
 
-        // FIX: Speaker mute bug — when muting, set master volume to 0
-        // AND clear speaker to prevent buffer noise loop. When unmuting,
-        // restore the speaker device.
+        // When muted, disable speaker device to stop all audio output
+        // and save bandwidth by not processing received audio.
+        // When unmuted, recreate the speaker from config.
         var room = VoiceChatRoom.Current;
         if (room != null)
         {
             if (_speakerMuted)
             {
                 room.SetMasterVolume(0f);
+                room.SetSpeaker(null);
             }
             else
             {
+                room.SetSpeaker(VoiceChatConfig.SpeakerDevice);
                 room.SetMasterVolume(VoiceChatConfig.MasterVolume);
             }
         }

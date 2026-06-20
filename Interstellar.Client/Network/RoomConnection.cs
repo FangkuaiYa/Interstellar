@@ -304,7 +304,7 @@ internal class RoomConnection : IMessageProcessor
         var msg = new HostSettingsMessage(
             s.MaxChatDistance, s.WallsBlockSound, s.OnlyHearInSight,
             s.ImpostorHearGhosts, s.OnlyGhostsCanTalk, s.HearInVent,
-            s.VentPrivateChat, s.CommsSabDisables, s.CameraCanHear,
+            s.HearVentPlayers, s.VentPrivateChat, s.CommsSabDisables, s.CameraCanHear,
             s.ImpostorPrivateRadio, s.OnlyMeetingOrLobby);
         socket.SendMessage(msg);
     }

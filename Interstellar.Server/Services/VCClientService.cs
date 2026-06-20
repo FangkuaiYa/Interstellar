@@ -3,6 +3,7 @@ using Interstellar.Messages.Variation;
 using Interstellar.Server.VoiceChat;
 using SIPSorcery.Net;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using WebSocketSharp;
 using WebSocketSharp.Server;
 
@@ -146,7 +147,12 @@ internal class VCClientService : WebSocketBehavior, IMessageProcessor
 
             long initMask = room.CurrentVoiceMask;
             lastSentMask = initMask;
-            SendMessages([new ShareIdMessage(client.ClientId), UpdateTracks(initMask), ..client.ShareExistingProfiles()]);
+            var joinMessages = new List<IMessage> { new ShareIdMessage(client.ClientId), UpdateTracks(initMask) };
+            joinMessages.AddRange(client.ShareExistingProfiles());
+            // Replay the last host settings so new clients start with correct room config
+            if (room.LastHostSettings != null)
+                joinMessages.Add(room.LastHostSettings);
+            SendMessages(joinMessages);
 
             SendServerInfo();
             BroadcastServerInfo(room);
@@ -174,7 +180,12 @@ internal class VCClientService : WebSocketBehavior, IMessageProcessor
         if(client == null) return;
         long mask = client.Room.CurrentVoiceMask;
         lastSentMask = mask;
-        SendMessages([UpdateTracks(mask), ..client.ShareExistingProfiles()]);
+        var reloadMessages = new List<IMessage> { UpdateTracks(mask) };
+        reloadMessages.AddRange(client.ShareExistingProfiles());
+        // Replay the last host settings so reconnecting clients stay in sync
+        if (client.Room.LastHostSettings != null)
+            reloadMessages.Add(client.Room.LastHostSettings);
+        SendMessages(reloadMessages);
     }
 
     private SdpOfferMessage UpdateTracks(long mask)

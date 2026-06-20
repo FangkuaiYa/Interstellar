@@ -39,8 +39,9 @@ public static class MeetingSpeakingIndicatorPatch
 
             byte localId = PlayerControl.LocalPlayer
                 ? PlayerControl.LocalPlayer.PlayerId : byte.MaxValue;
+            // Don't show self-speaking indicator when locally muted
             if (PlayerControl.LocalPlayer && room.LocalMicLevel > SpeakingThreshold
-                && localId != byte.MaxValue)
+                && localId != byte.MaxValue && !room.Mute)
                 speaking.Add(localId);
         }
 

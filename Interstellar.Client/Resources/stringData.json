@@ -1,8 +1,8 @@
 {
   "vc.settings.title": {
-    "0": "Voice Chat",
-    "13": "语音聊天",
-    "14": "語音聊天"
+    "0": "Interstellar Voice Chat",
+    "13": "星际语音聊天",
+    "14": "星際語音聊天"
   },
   "vc.settings.personal": {
     "0": "Personal",
@@ -36,19 +36,19 @@
   },
   "vc.settings.maxChatDistance": {
     "0": "Max Chat Distance",
-    "13": "最大语音距离",
-    "14": "最大語音距離"
+    "13": "最大聊天距离",
+    "14": "最大聊天距離"
   },
-  "vc.settings.wallsBlockSound": {
-    "0": "Walls Block Voice",
-    "13": "墙壁阻挡语音",
-    "14": "牆壁阻擋語音"
-  },
-  "vc.settings.onlyHearInSight": {
-    "0": "Only Hear When Visible",
-    "13": "同屏可见时才能听到",
-    "14": "同屏可見時才能聽到"
-  },
+    "vc.settings.wallsBlockSound": {
+        "0": "Walls Block Voice",
+        "13": "墙壁可以隔音",
+        "14": "牆壁可以隔音"
+    },
+    "vc.settings.onlyHearInSight": {
+        "0": "Only Hear When Visible",
+        "13": "仅能听见视野内的人",
+        "14": "僅能聽見視野內的人"
+    },
   "vc.settings.impostorHearGhosts": {
     "0": "Impostor Can Hear Ghosts",
     "13": "内鬼可听到幽灵说话",
@@ -56,34 +56,39 @@
   },
   "vc.settings.onlyGhostsCanTalk": {
     "0": "Only Ghosts Can Talk",
-    "13": "仅幽灵可发言",
-    "14": "僅幽靈可發言"
+    "13": "仅幽灵可聊天",
+    "14": "僅幽靈可聊天"
   },
   "vc.settings.hearInVent": {
-    "0": "Hear While In Vent",
-    "13": "躲在管道内可听到语音",
-    "14": "躲在管道內可聽到語音"
+    "0": "Hear Outside While In Vent",
+    "13": "躲在管道内可听到声音",
+    "14": "躲在管道內可聽到聲音"
   },
-  "vc.settings.ventPrivateChat": {
-    "0": "Vent Private Chat",
-    "13": "管道内私密通话",
-    "14": "管道內私密通話"
+  "vc.settings.hearVentPlayers": {
+    "0": "Hear Players In Vent",
+    "13": "外界可以听到管道内的声音",
+    "14": "外界可以聽到管道內的聲音"
   },
+    "vc.settings.ventPrivateChat": {
+        "0": "Vent Private Chat",
+        "13": "管道内私聊",
+        "14": "管道內私聊"
+    },
   "vc.settings.commsSabotageMutes": {
     "0": "Mute During Sabotage",
     "13": "通讯破坏时全体静音",
     "14": "通訊破壞時全體靜音"
   },
-  "vc.settings.cameraCanHear": {
-    "0": "Hear While On Camera",
-    "13": "看监控时可听到语音",
-    "14": "看監控時可聽到語音"
-  },
-  "vc.settings.impostorPrivateRadio": {
-    "0": "Impostor Private Radio",
-    "13": "内鬼私密电台",
-    "14": "內鬼私密電台"
-  },
+    "vc.settings.cameraCanHear": {
+        "0": "Hear While On Camera",
+        "13": "监控可以收听声音",
+        "14": "監控可以收聽聲音"
+    },
+    "vc.settings.impostorPrivateRadio": {
+        "0": "Impostor Private Radio",
+        "13": "内鬼私密通话",
+        "14": "內鬼私密通話"
+    },
   "vc.settings.onlyMeetingOrLobby": {
     "0": "Only Meeting / Lobby Can Chat",
     "13": "仅会议与大厅可聊天",
@@ -155,11 +160,11 @@
     "13": "内鬼",
     "14": "內鬼"
   },
-  "vc.hud.impostorRadio": {
-    "0": "Impostor Radio",
-    "13": "内鬼电台",
-    "14": "內鬼電台"
-  },
+    "vc.hud.impostorRadio": {
+        "0": "Impostor Radio",
+        "13": "内鬼私密通话",
+        "14": "內鬼私密通話"
+    },
 
   "vc.popup.capacityTitle": {
     "0": "Server Full",

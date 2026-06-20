@@ -223,6 +223,7 @@ public class VCRoom : IConnectionContext, IHasAudioPropertyNode, IMicrophoneCont
         s.ImpostorHearGhosts = settings.ImpostorHearGhosts;
         s.OnlyGhostsCanTalk = settings.OnlyGhostsCanTalk;
         s.HearInVent = settings.HearInVent;
+        s.HearVentPlayers = settings.HearVentPlayers;
         s.VentPrivateChat = settings.VentPrivateChat;
         s.CommsSabDisables = settings.CommsSabDisables;
         s.CameraCanHear = settings.CameraCanHear;

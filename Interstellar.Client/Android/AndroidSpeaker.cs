@@ -96,8 +96,9 @@ public class AndroidSpeaker : IDisposable
             Array.Clear(_callbackScratch, 0, _callbackScratch.Length);
         }
 
-        // Boost speaker output — Android AudioTrack can be quieter than desktop
-        const float androidSpeakerGain = 1.5f;
+        // Moderate gain boost — Android AudioTrack can be quieter than desktop,
+        // but too much gain causes clipping distortion and muffled sound.
+        const float androidSpeakerGain = 1.15f;
         for (int i = 0; i < data.Length; i++)
         {
             float sample = _callbackScratch[i] * androidSpeakerGain;

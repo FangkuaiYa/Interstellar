@@ -15,15 +15,16 @@ public class HostSettingsMessage : IMessage
     public bool CameraCanHear => (Flags & 128) != 0;
     public bool ImpostorPrivateRadio => (Flags & 256) != 0;
     public bool OnlyMeetingOrLobby => (Flags & 512) != 0;
+    public bool HearVentPlayers => (Flags & 1024) != 0;
 
-    /// <summary>Packed bitmask of all 11 boolean settings (saves 9 bytes vs individual booleans).</summary>
+    /// <summary>Packed bitmask of all 12 boolean settings (saves 10 bytes vs individual booleans).</summary>
     public ushort Flags { get; }
 
     public HostSettingsMessage(
         float maxChatDistance, bool wallsBlockSound, bool onlyHearInSight,
         bool impostorHearGhosts, bool onlyGhostsCanTalk, bool hearInVent,
-        bool ventPrivateChat, bool commsSabDisables, bool cameraCanHear,
-        bool impostorPrivateRadio, bool onlyMeetingOrLobby)
+        bool hearVentPlayers, bool ventPrivateChat, bool commsSabDisables,
+        bool cameraCanHear, bool impostorPrivateRadio, bool onlyMeetingOrLobby)
     {
         MaxChatDistance = maxChatDistance;
         ushort flags = 0;
@@ -37,6 +38,7 @@ public class HostSettingsMessage : IMessage
         if (cameraCanHear) flags |= 128;
         if (impostorPrivateRadio) flags |= 256;
         if (onlyMeetingOrLobby) flags |= 512;
+        if (hearVentPlayers) flags |= 1024;
         Flags = flags;
     }
 
@@ -61,6 +63,6 @@ public class HostSettingsMessage : IMessage
             (flags & 1) != 0, (flags & 2) != 0, (flags & 4) != 0,
             (flags & 8) != 0, (flags & 16) != 0, (flags & 32) != 0,
             (flags & 64) != 0, (flags & 128) != 0, (flags & 256) != 0,
-            (flags & 512) != 0);
+            (flags & 512) != 0, (flags & 1024) != 0);
     }
 }

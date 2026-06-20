@@ -15,6 +15,9 @@ internal class VCRoom
     string myKey;
     Dictionary<byte, VCClient> fastClients = new();
 
+    /// <summary>Stores the last host settings broadcast so new clients receive them on join.</summary>
+    public HostSettingsMessage? LastHostSettings { get; set; }
+
     public int ClientCount => fastClients.Count;
 
     public VCRoom(string key)

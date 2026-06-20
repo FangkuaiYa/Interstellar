@@ -193,7 +193,11 @@ public class VCPlayer
         if (commsSabActive && s.CommsSabDisables && !localImp && !localDead) { MuteAll(); return; }
 
         float dist = Vector2.Distance(targetPos, listenerPos.Value);
-        float volume = VoiceChatRoom.GetVolume(dist, s.MaxChatDistance);
+        // When OnlyHearInSight is enabled, distance attenuation is disabled —
+        // visibility (line-of-sight) is the sole determinant of audibility.
+        float volume = s.OnlyHearInSight
+            ? 1f
+            : VoiceChatRoom.GetVolume(dist, s.MaxChatDistance);
         float pan = VoiceChatRoom.GetPan(listenerPos.Value.x, targetPos.x);
 
         if (localDead)
@@ -270,12 +274,15 @@ public class VCPlayer
 
         if (targetInVent)
         {
-            if (!s.HearInVent) { MuteAll(); return; }
+            // HearVentPlayers: can outside players hear someone in a vent?
+            if (!s.HearVentPlayers) { MuteAll(); return; }
             if (s.VentPrivateChat && !localInVent) { MuteAll(); return; }
         }
-        else if (s.VentPrivateChat && localInVent)
+        else if (localInVent)
         {
-            MuteAll(); return;
+            // HearInVent: can a player hiding in a vent hear outside players?
+            if (!s.HearInVent) { MuteAll(); return; }
+            if (s.VentPrivateChat) { MuteAll(); return; }
         }
 
         _imager.Pan = pan;

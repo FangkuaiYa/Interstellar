@@ -188,7 +188,8 @@ public class VoiceChatSettingsWindow : MonoBehaviour
         (Get("vc.settings.onlyHearInSight", "Only Hear In Sight"),        () => VoiceChatConfig.SyncedRoomSettings.OnlyHearInSight,       v => VoiceChatConfig.SetHostOnlyHearInSight(v)),
         (Get("vc.settings.impostorHearGhosts", "Impostor Hear Ghosts"),   () => VoiceChatConfig.SyncedRoomSettings.ImpostorHearGhosts,    v => VoiceChatConfig.SetHostImpostorHearGhosts(v)),
         (Get("vc.settings.onlyGhostsCanTalk", "Only Ghosts Can Talk"),    () => VoiceChatConfig.SyncedRoomSettings.OnlyGhostsCanTalk,     v => VoiceChatConfig.SetHostOnlyGhostsCanTalk(v)),
-        (Get("vc.settings.hearInVent", "Hear In Vent"),                   () => VoiceChatConfig.SyncedRoomSettings.HearInVent,            v => VoiceChatConfig.SetHostHearInVent(v)),
+        (Get("vc.settings.hearInVent", "Hear Outside While In Vent"),      () => VoiceChatConfig.SyncedRoomSettings.HearInVent,            v => VoiceChatConfig.SetHostHearInVent(v)),
+        (Get("vc.settings.hearVentPlayers", "Hear Players In Vent"),     () => VoiceChatConfig.SyncedRoomSettings.HearVentPlayers,       v => VoiceChatConfig.SetHostHearVentPlayers(v)),
         (Get("vc.settings.ventPrivateChat", "Vent Private Chat"),         () => VoiceChatConfig.SyncedRoomSettings.VentPrivateChat,       v => VoiceChatConfig.SetHostVentPrivateChat(v)),
         (Get("vc.settings.commsSabotageMutes", "Comms Sabotage Mutes"),   () => VoiceChatConfig.SyncedRoomSettings.CommsSabDisables,      v => VoiceChatConfig.SetHostCommsSabDisables(v)),
         (Get("vc.settings.cameraCanHear", "Camera Can Hear"),             () => VoiceChatConfig.SyncedRoomSettings.CameraCanHear,         v => VoiceChatConfig.SetHostCameraCanHear(v)),
@@ -207,7 +208,8 @@ public class VoiceChatSettingsWindow : MonoBehaviour
         }
 
         {
-            GUI.enabled = isHost;
+            bool onlyHearInSight = VoiceChatConfig.SyncedRoomSettings.OnlyHearInSight;
+            GUI.enabled = isHost && !onlyHearInSight;
             RenderSlider(Get("vc.settings.maxChatDistance", "Max Chat Distance"), 1.5f, 20f,
                 isHost ? VoiceChatConfig.HostMaxChatDistance
                        : VoiceChatConfig.SyncedRoomSettings.MaxChatDistance,
