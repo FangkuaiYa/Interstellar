@@ -1,4 +1,5 @@
 using HarmonyLib;
+using System.Globalization;
 using UnityEngine;
 using VoiceChatPlugin.VoiceChat;
 
@@ -12,6 +13,20 @@ namespace VoiceChatPlugin;
 public static class MainMenuCoffeeButtonPatch
 {
     private static Sprite? _coffeeSprite;
+
+    private static bool IsChinese()
+    {
+        try
+        {
+            var name = CultureInfo.CurrentUICulture.Name;
+            if (name.StartsWith("zh")) return true;
+            return false;
+        }
+        catch
+        {
+            return false;
+        }
+    }
 
     public static void Postfix(MainMenuManager __instance)
     {
@@ -37,7 +52,12 @@ public static class MainMenuCoffeeButtonPatch
         var button = go.AddComponent<PassiveButton>();
         button.OnClick = new UnityEngine.UI.Button.ButtonClickedEvent();
         button.OnClick.AddListener((System.Action)(() =>
-            Application.OpenURL("https://ko-fi.com/fangkuaiya")));
+        {
+            var url = IsChinese()
+                ? "https://amongusclub.cn/archives/co-fi"
+                : "https://ko-fi.com/fangkuaiya";
+            Application.OpenURL(url);
+        }));
         button.OnMouseOver = new UnityEngine.Events.UnityEvent();
         button.OnMouseOver.AddListener((System.Action)(() => sr.color = Color.green));
         button.OnMouseOut = new UnityEngine.Events.UnityEvent();

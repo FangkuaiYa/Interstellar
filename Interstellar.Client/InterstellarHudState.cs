@@ -111,7 +111,7 @@ public static class InterstellarHudState
         VoiceChatRoom.Current?.SendHostSettings(cur);
         _lastSentSettings = new VoiceChatRoomSettings();
         _lastSentSettings.Apply(cur);
-        InterstellarPlugin.Logger.LogInfo("[VC] Room settings synced via voice server.");
+        // InterstellarPlugin.Logger.LogInfo("[VC] Room settings synced via voice server.");
     }
 
     private static void DestroyButtons()

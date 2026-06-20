@@ -75,6 +75,14 @@ namespace Interstellar.Server
             string url = urlPrefix + "localhost:8000";
             if (args.Length >= 1 && !args[0].StartsWith("-")) url = urlPrefix + args[0];
 
+            // Fall back to OPTIMAL_PLAYERS env var when not set via CLI (e.g. in Docker)
+            if (optimalPlayers <= 0)
+            {
+                var envOptimal = System.Environment.GetEnvironmentVariable("OPTIMAL_PLAYERS");
+                if (!string.IsNullOrEmpty(envOptimal) && int.TryParse(envOptimal, out var envOp))
+                    optimalPlayers = envOp;
+            }
+
             Console.WriteLine("Starting Interstellar Voice Server at " + url);
             if (optimalPlayers > 0)
                 Console.WriteLine("  Optimal players: " + optimalPlayers);

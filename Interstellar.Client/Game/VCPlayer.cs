@@ -23,6 +23,19 @@ public class VCPlayer
     public bool IsMapped => _mappedPlayer != null && _mappedPlayer;
     public bool IsAudible => _normalVolume.Volume > 0f || _ghostVolume.Volume > 0f || _radioVolume.Volume > 0f;
 
+    // ----- Shadow / wall detection -----
+    // Uses the exact same method + mask as Among Us's own vision checks
+    // (see NoShadowBehaviour, Console, etc.).
+
+    /// <summary>
+    /// Returns true when a real wall/shadow collider stands between
+    /// <paramref name="source"/> and <paramref name="target"/>.
+    /// </summary>
+    private static bool HasShadowBetween(Vector2 source, Vector2 target)
+    {
+        return PhysicsHelpers.AnythingBetween(source, target, Constants.ShadowMask, false);
+    }
+
     public VCPlayer(
         VoiceChatRoom room,
         AudioRoutingInstance instance,
@@ -159,13 +172,7 @@ public class VCPlayer
     {
         if (!s.WallsBlockSound) { coeff = 1f; return 1f; }
 
-        if (s.OnlyHearInSight)
-        {
-            bool inSight = !Physics2D.Linecast(listener, speaker, LayerMask.GetMask("Shadow"));
-            if (!inSight) { coeff = 0f; return 0f; }
-        }
-
-        bool hasWall = Physics2D.Linecast(listener, speaker, LayerMask.GetMask("Shadow"));
+        bool hasWall = HasShadowBetween(listener, speaker);
         coeff = coeff + ((hasWall ? 0f : 1f) - coeff) * Math.Clamp(Time.deltaTime * 4f, 0f, 1f);
         return coeff;
     }
@@ -193,11 +200,7 @@ public class VCPlayer
         if (commsSabActive && s.CommsSabDisables && !localImp && !localDead) { MuteAll(); return; }
 
         float dist = Vector2.Distance(targetPos, listenerPos.Value);
-        // When OnlyHearInSight is enabled, distance attenuation is disabled —
-        // visibility (line-of-sight) is the sole determinant of audibility.
-        float volume = s.OnlyHearInSight
-            ? 1f
-            : VoiceChatRoom.GetVolume(dist, s.MaxChatDistance);
+        float volume = VoiceChatRoom.GetVolume(dist, s.MaxChatDistance);
         float pan = VoiceChatRoom.GetPan(listenerPos.Value.x, targetPos.x);
 
         if (localDead)

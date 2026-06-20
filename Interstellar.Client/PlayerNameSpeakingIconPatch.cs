@@ -7,7 +7,7 @@ using Object = UnityEngine.Object;
 namespace VoiceChatPlugin;
 
 /// <summary>
-/// Displays a microphone icon (Speaking.png) above the name of each
+/// Displays a microphone icon (Speaking.png) to the left of the name of each
 /// player who is currently speaking.  Replaces the old top-of-screen
 /// speaking bar that was in PingTrackerPatch.
 /// </summary>
@@ -70,9 +70,15 @@ public static class PlayerNameSpeakingIconPatch
             PlayerControl? pc = FindPlayerById(id);
             if (pc?.cosmetics.nameText == null) continue;
 
-            // Don't show icon if the name object is inactive
-            // (e.g. player is off-screen or in a vent).
-            if (!pc.cosmetics.nameText.gameObject.activeInHierarchy)
+            // Don't show icon if the player's name or body is hidden from view
+            // (e.g. player is off-screen, in a vent, or invisible via a mod role).
+            // Check multiple indicators because different mods use different
+            // invisibility mechanisms (Visible flag, alpha fade, renderer toggle).
+            bool nameHidden = !pc.cosmetics.nameText.gameObject.activeInHierarchy;
+            // Body sprite alpha — Ninja/Fox/Sprinter etc. use Color.Lerp to fade
+            // the body to alpha=0 for invisibility (never touch name text alpha).
+            float bodyAlpha = pc.cosmetics.currentBodySprite?.BodySprite?.color.a ?? 1f;
+            if (nameHidden || pc.inVent || bodyAlpha < 0.01f)
             {
                 if (IconCache.ContainsKey(id))
                     RemoveIcon(id);
@@ -86,7 +92,7 @@ public static class PlayerNameSpeakingIconPatch
                 {
                     IconCache.Remove(id);
                 }
-                else if (existing.transform.parent != pc.cosmetics.nameText.transform)
+                else if (existing.transform.parent != pc.cosmetics.nameText.transform.parent)
                 {
                     // Player object changed (e.g. re-spawn) — rebuild.
                     Object.Destroy(existing);
@@ -94,7 +100,10 @@ public static class PlayerNameSpeakingIconPatch
                 }
                 else
                 {
-                    continue; // icon already present and correct
+                    // Dynamically follow the name text width each frame
+                    // so the icon stays to the left even when names change.
+                    UpdateIconPosition(existing, pc);
+                    continue;
                 }
             }
 
@@ -106,25 +115,30 @@ public static class PlayerNameSpeakingIconPatch
     {
         if (_speakingSprite == null) return;
 
+        // Parent to the nameText's parent (sibling of nameText) instead of
+        // nameText itself.  This prevents other mods that copy/modify nameText
+        // from accidentally cloning the mic icon as well.
+        var nameParent = pc.cosmetics.nameText.transform.parent;
+        if (nameParent == null) return;
+
         var go = new GameObject(IconObjectName);
-        go.transform.SetParent(pc.cosmetics.nameText.transform, false);
-        go.transform.localPosition = new Vector3(0f, 0.3f, -0.1f);
+        go.transform.SetParent(nameParent, false);
         go.transform.localScale = Vector3.one * 0.5f;
 
-        // Copy the parent's layer so the icon renders in the same pass.
+        // Use the same layer as the name text so shadows/stencil affect both identically.
         go.layer = pc.cosmetics.nameText.gameObject.layer;
 
         var sr = go.AddComponent<SpriteRenderer>();
         sr.sprite = _speakingSprite;
 
-        // Copy sorting layer and order from the parent nameText's MeshRenderer
-        // so the microphone icon respects walls/shadows the same way the name does.
-        var parentRenderer = pc.cosmetics.nameText.GetComponent<MeshRenderer>();
-        if (parentRenderer != null)
+        // Match the name text's sorting layer and order so the rendering
+        // pipeline groups the icon with the name text.
+        var nameMr = pc.cosmetics.nameText.GetComponent<MeshRenderer>();
+        if (nameMr != null)
         {
-            sr.sortingLayerName = parentRenderer.sortingLayerName;
-            sr.sortingLayerID = parentRenderer.sortingLayerID;
-            sr.sortingOrder = parentRenderer.sortingOrder + 1;
+            sr.sortingLayerName = nameMr.sortingLayerName;
+            sr.sortingLayerID   = nameMr.sortingLayerID;
+            sr.sortingOrder     = nameMr.sortingOrder;
         }
         else
         {
@@ -132,6 +146,27 @@ public static class PlayerNameSpeakingIconPatch
         }
 
         IconCache[playerId] = go;
+
+        // Set initial position based on current text width.
+        UpdateIconPosition(go, pc);
+    }
+
+    /// <summary>
+    /// Positions the icon to the left of the name text, following the
+    /// text's rendered width each frame so the icon never overlaps
+    /// the name even when it changes (mod role text, long names, etc.).
+    /// </summary>
+    private static void UpdateIconPosition(GameObject icon, PlayerControl pc)
+    {
+        var nameText = pc.cosmetics.nameText;
+        if (nameText == null) return;
+
+        // Use the rendered text bounds width (local-space) to position
+        // the icon just to the left of the text.
+        float textHalfWidth = nameText.textBounds.size.x * 0.5f;
+        // Fallback if bounds aren't ready yet (first frame after spawn, etc.)
+        if (textHalfWidth < 0.01f) textHalfWidth = 0.5f;
+        icon.transform.localPosition = new Vector3(-textHalfWidth - 0.25f, 0f, -0.1f);
     }
 
     private static void RemoveIcon(byte playerId)

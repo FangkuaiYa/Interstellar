@@ -19,7 +19,6 @@ public static class VoiceChatConfig
 
     public static float HostMaxChatDistance => _hostMaxDist?.Value ?? 6f;
     public static bool HostWallsBlockSound => _hostWallsBlock?.Value ?? true;
-    public static bool HostOnlyHearInSight => _hostSight?.Value ?? false;
     public static bool HostImpostorHearGhosts => _hostImpGhost?.Value ?? false;
     public static bool HostOnlyGhostsCanTalk => _hostOnlyGhost?.Value ?? false;
     public static bool HostHearInVent => _hostHearVent?.Value ?? true;
@@ -45,7 +44,7 @@ public static class VoiceChatConfig
     private static ConfigEntry<string>? _mic, _speaker, _server;
     private static ConfigEntry<float>? _masterVol, _micVol;
     private static ConfigEntry<float>? _hostMaxDist;
-    private static ConfigEntry<bool>? _hostWallsBlock, _hostSight, _hostImpGhost;
+    private static ConfigEntry<bool>? _hostWallsBlock, _hostImpGhost;
     private static ConfigEntry<bool>? _hostOnlyGhost, _hostHearVent, _hostHearVentPlayers, _hostVentChat;
     private static ConfigEntry<bool>? _hostCommSab, _hostCamera, _hostImpRadio, _hostMeetingOnly;
     private static ConfigEntry<bool>? _useApiServerList, _forceVoiceServerEnabled;
@@ -114,7 +113,6 @@ public static class VoiceChatConfig
         _hostMaxDist = cfg.Bind("VoiceChat.Room", "MaxChatDistance", 6f,
                             new ConfigDescription("Max hearing distance", new AcceptableValueRange<float>(1.5f, 20f)));
         _hostWallsBlock = cfg.Bind("VoiceChat.Room", "WallsBlockSound", true);
-        _hostSight = cfg.Bind("VoiceChat.Room", "OnlyHearInSight", false);
         _hostImpGhost = cfg.Bind("VoiceChat.Room", "ImpostorHearGhosts", false);
         _hostOnlyGhost = cfg.Bind("VoiceChat.Room", "OnlyGhostsCanTalk", false);
         _hostHearVent = cfg.Bind("VoiceChat.Room", "HearInVent", true);
@@ -144,7 +142,6 @@ public static class VoiceChatConfig
     public static void SetMicVolume(float v) => _micVol!.Value = v;
     public static void SetHostMaxChatDistance(float v) => _hostMaxDist!.Value = Math.Clamp(v, 1.5f, 20f);
     public static void SetHostWallsBlockSound(bool v) => _hostWallsBlock!.Value = v;
-    public static void SetHostOnlyHearInSight(bool v) => _hostSight!.Value = v;
     public static void SetHostImpostorHearGhosts(bool v) => _hostImpGhost!.Value = v;
     public static void SetHostOnlyGhostsCanTalk(bool v) => _hostOnlyGhost!.Value = v;
     public static void SetHostHearInVent(bool v) => _hostHearVent!.Value = v;
@@ -160,7 +157,6 @@ public static class VoiceChatConfig
         var s = SyncedRoomSettings;
         s.MaxChatDistance = HostMaxChatDistance;
         s.WallsBlockSound = HostWallsBlockSound;
-        s.OnlyHearInSight = HostOnlyHearInSight;
         s.ImpostorHearGhosts = HostImpostorHearGhosts;
         s.OnlyGhostsCanTalk = HostOnlyGhostsCanTalk;
         s.HearInVent = HostHearInVent;

@@ -121,13 +121,12 @@ internal class RoomConnection : IMessageProcessor
     {
         this.socket.OnOpen += (sender, e) =>
         {
-            InterstellarPlugin.Logger.LogInfo($"[VC] WebSocket connected. Setting up RTC...");
+            InterstellarPlugin.Logger.LogInfo($"[VC] WebSocket connected (room={this.roomCode} region={this.region}).");
             SetUpRTCConnection();
             this.socket.SendMessage(new JoinMessage(this.roomCode, this.region));
-            InterstellarPlugin.Logger.LogInfo($"[VC] JoinMessage sent: room={this.roomCode} region={this.region}");
         };
         this.socket.Connect();
-        InterstellarPlugin.Logger.LogInfo($"[VC] WebSocket connecting...");
+        // InterstellarPlugin.Logger.LogInfo($"[VC] WebSocket connecting...");
     }
 
     private void SetUpRTCConnection()
@@ -244,17 +243,18 @@ internal class RoomConnection : IMessageProcessor
     {
         int id = message.Id;
         myClientId = id;
+        // Client ID received — keep one combined log line.
         InterstellarPlugin.Logger.LogInfo($"[VC] Received client ID: {id}");
         var localTrack = new MediaStreamTrack(AudioHelpers.GetOpusFormat(id), MediaStreamStatusEnum.SendOnly);
         connection!.addTrack(localTrack);
         localAudioStream = connection.AudioStreamList.Find(a => a.GetSendingFormat().ID == id);
-        InterstellarPlugin.Logger.LogInfo($"[VC] Local audio track added (id={id}, stream={localAudioStream != null})");
     }
 
     MediaStreamTrack[] tracks = new MediaStreamTrack[AudioHelpers.MaxTracks]; 
     private void OnReceiveSdpOffer(SdpOfferMessage message)
     {
-        InterstellarPlugin.Logger.LogInfo($"[VC] Received SDP offer (mask={message.Mask})");
+        // SDP offer received — log once per renegotiation only if mask changed.
+        // InterstellarPlugin.Logger.LogInfo($"[VC] Received SDP offer (mask={message.Mask})");
         // Update tracks (without removing)
         long mask = message.Mask;
         for (int i = 0; i < AudioHelpers.MaxTracks; i++)
@@ -275,7 +275,7 @@ internal class RoomConnection : IMessageProcessor
         var answer = connection.createAnswer(null);
         connection.setLocalDescription(answer).Wait();
         socket.SendMessage(new SdpAnswerMessage(answer.sdp));
-        InterstellarPlugin.Logger.LogInfo("[VC] SDP answer sent.");
+        // InterstellarPlugin.Logger.LogInfo("[VC] SDP answer sent.");
     }
 
     private void OnReceiveIceCandMessage(IceCandMessage message)

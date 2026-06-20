@@ -36,7 +36,8 @@ internal class VCClientService : WebSocketBehavior, IMessageProcessor
 
         connection.onicecandidate += (candidate) =>
         {
-            Console.WriteLine("Client " + this.ID + " ICE candidate generated.");
+            // ICE candidates are very noisy (dozens per connection).
+            // Console.WriteLine("Client " + this.ID + " ICE candidate generated.");
             var msg = new IceCandMessage(candidate.candidate, candidate.sdpMid, candidate.sdpMLineIndex, candidate.usernameFragment);
             // Check if the WebSocket is open yet
             if (this.Context?.WebSocket?.ReadyState == WebSocketState.Open)
@@ -88,15 +89,15 @@ internal class VCClientService : WebSocketBehavior, IMessageProcessor
         switch (tag)
         {
             case MessageTag.Join:
-                Console.WriteLine("Client " + this.ID + " requested to join a room.");
+                // Console.WriteLine("Client " + this.ID + " requested to join a room.");
                 JoinRoom(JoinMessage.DeserializeWithoutTag(bytes, out read));
                 break;
             case MessageTag.SdpAnswer:
-                Console.WriteLine("Client " + this.ID + " sent SDP answer.");
+                // Console.WriteLine("Client " + this.ID + " sent SDP answer.");
                 AcceptSdpAnswer(SdpAnswerMessage.DeserializeWithoutTag(bytes, out read));
                 break;
             case MessageTag.AddIceCand:
-                Console.WriteLine("Client " + this.ID + " sent ICE candidate.");
+                // Console.WriteLine("Client " + this.ID + " sent ICE candidate.");
                 AddIceCandidate(IceCandMessage.DeserializeWithoutTag(bytes, out read));
                 break;
             case MessageTag.Profile:
@@ -106,7 +107,7 @@ internal class VCClientService : WebSocketBehavior, IMessageProcessor
                     break;
                 }
                 var profile = ProfileMessage.DeserializeWithoutTag(bytes, out read);
-                Console.WriteLine("Client " + this.ID + " sent profile (name: " + profile.PlayerName + "id: " + profile.PlayerId + ").");
+                // Console.WriteLine("Client " + this.ID + " sent profile (name: " + profile.PlayerName + "id: " + profile.PlayerId + ").");
                 client.UpdateProfile(profile.PlayerName, profile.PlayerId);
                 break;
             case MessageTag.Custom:

@@ -33,7 +33,9 @@ internal class Server
 
         http.OnGet += (sender, e) =>
         {
-            Console.WriteLine("HTTP request: " + e.Request.Url.AbsolutePath);
+            // HTTP request log: very noisy (dashboard polls every 3s).
+            // Uncomment for debugging only.
+            // Console.WriteLine("HTTP request: " + e.Request.Url.AbsolutePath);
             var req = e.Request;
             var res = e.Response;
             var path = req.Url.AbsolutePath;

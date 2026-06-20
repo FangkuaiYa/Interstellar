@@ -54,10 +54,8 @@ public static class VoiceChatSettingsMenu
         var btn = Object.Instantiate(src.gameObject, parent).GetComponent<PassiveButton>();
         btn.name = "VC_SettingsBtn";
 
-        bool inGame = AmongUsClient.Instance?.GameState == InnerNet.InnerNetClient.GameStates.Joined;
-        btn.transform.localPosition = inGame
-            ? new Vector3(-1.94f, -1.58f, 0f)
-            : new Vector3(-1.34f, 2.99f, 0f);
+        // Use the same consistent position for both lobby and gameplay.
+        btn.transform.localPosition = new Vector3(-1.34f, 2.99f, 0f);
         btn.transform.localScale = new Vector3(0.49f, 0.82f, 1f);
 
         var label = btn.GetComponentInChildren<TextMeshPro>();

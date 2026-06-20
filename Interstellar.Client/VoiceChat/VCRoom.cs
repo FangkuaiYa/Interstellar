@@ -253,7 +253,7 @@ public class VCRoom : IConnectionContext, IHasAudioPropertyNode, IMicrophoneCont
         s.ImpostorPrivateRadio = settings.ImpostorPrivateRadio;
         s.OnlyMeetingOrLobby = settings.OnlyMeetingOrLobby;
         VoiceChatConfig.OnSyncedSettingsChanged?.Invoke(s);
-        VoiceChatPlugin.InterstellarPlugin.Logger.LogInfo("[VC] Host settings received via voice server.");
+        // VoiceChatPlugin.InterstellarPlugin.Logger.LogInfo("[VC] Host settings received via voice server.");
     }
 
     void IConnectionContext.OnServerInfoReceived(ServerInfoMessage message)
@@ -261,8 +261,8 @@ public class VCRoom : IConnectionContext, IHasAudioPropertyNode, IMicrophoneCont
         // IMPORTANT: This runs on WebSocket's callback thread — NOT the Unity main thread.
         // Only update data state here. UI triggers must happen on the main thread (InterstellarRoomDriver).
         VoiceChatServerState.Update(message);
-        VoiceChatPlugin.InterstellarPlugin.Logger.LogInfo(
-            $"[VC] Server info: optimal={message.OptimalPlayers}, current={message.CurrentTotalPlayers}, vc={message.VoiceServerUrl}");
+        // VoiceChatPlugin.InterstellarPlugin.Logger.LogInfo(
+        //     $"[VC] Server info: optimal={message.OptimalPlayers}, current={message.CurrentTotalPlayers}, vc={message.VoiceServerUrl}");
     }
 
     public void SendHostSettings(VoiceChatRoomSettings s)

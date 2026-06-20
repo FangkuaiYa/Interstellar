@@ -116,13 +116,13 @@ public class VoiceChatRoom
                         _clientVolume.GetProperty(instance).Volume = 1f;
                         _normalVolume.GetProperty(instance).Volume = 0f;
                         _localMicMeter = _levelMeter.GetProperty(instance);
-                        InterstellarPlugin.Logger.LogInfo("[VC] Local client connected.");
+                        // InterstellarPlugin.Logger.LogInfo("[VC] Local client connected.");
                     }
                     else
                     {
                         _clients[clientId] = new VCPlayer(this, instance,
                             _imager, _normalVolume, _ghostVolume, _radioVolume, _clientVolume, _levelMeter);
-                        InterstellarPlugin.Logger.LogInfo($"[VC] Remote client {clientId} connected.");
+                        // InterstellarPlugin.Logger.LogInfo($"[VC] Remote client {clientId} connected.");
                     }
                 },
                 OnUpdateProfile = (clientId, playerId, playerName) =>
@@ -130,13 +130,13 @@ public class VoiceChatRoom
                     if (_clients.TryGetValue(clientId, out var p))
                     {
                         p.UpdateProfile(playerId, playerName);
-                        InterstellarPlugin.Logger.LogInfo($"[VC] Client {clientId}: id={playerId} name={playerName}");
+                        // InterstellarPlugin.Logger.LogInfo($"[VC] Client {clientId}: id={playerId} name={playerName}");
                     }
                 },
                 OnDisconnect = clientId =>
                 {
                     _clients.Remove(clientId);
-                    InterstellarPlugin.Logger.LogInfo($"[VC] Client {clientId} disconnected.");
+                    // InterstellarPlugin.Logger.LogInfo($"[VC] Client {clientId} disconnected.");
                 },
             // Android jitter buffer: 240ms (11520 samples at 48kHz).
             // Smaller than the old 400ms to reduce latency and perceived echo,
@@ -162,7 +162,7 @@ public class VoiceChatRoom
             SetSpeaker(VoiceChatConfig.SpeakerDevice);
         }
 
-        InterstellarPlugin.Logger.LogInfo("[VC] VoiceChatRoom constructed (Interstellar transport).");
+        // InterstellarPlugin.Logger.LogInfo("[VC] VoiceChatRoom constructed (Interstellar transport).");
     }
 
     public void SetMasterVolume(float v) => _masterVolumeProperty.Volume = v;
@@ -343,7 +343,7 @@ public class VoiceChatRoom
         UpdateLocalProfile(true);
         foreach (var c in _clients.Values) c.ResetMapping();
         _commsSabActive = false;
-        InterstellarPlugin.Logger.LogInfo("[VC] Rejoin: state cleared, profiles will re-sync.");
+        // InterstellarPlugin.Logger.LogInfo("[VC] Rejoin: state cleared, profiles will re-sync.");
     }
 
     public void Close()

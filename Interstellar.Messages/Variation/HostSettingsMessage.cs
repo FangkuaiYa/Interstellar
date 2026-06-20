@@ -59,10 +59,17 @@ public class HostSettingsMessage : IMessage
         read += IMessage.DeserializeByte(ref bytes, out var flagsLow);
         read += IMessage.DeserializeByte(ref bytes, out var flagsHigh);
         ushort flags = (ushort)(flagsLow | (flagsHigh << 8));
+        // Parameters must match the bit layout used by the constructor:
+        //   1=wallsBlockSound  2=onlyHearInSight   4=impostorHearGhosts
+        //   8=onlyGhostsCanTalk 16=hearInVent      32=ventPrivateChat
+        //  64=commsSabDisables 128=cameraCanHear  256=impostorPrivateRadio
+        // 512=onlyMeetingOrLobby 1024=hearVentPlayers
+        // Parameter order must match the constructor exactly:
+        //   hearVentPlayers (param 7, bit 1024) comes BEFORE ventPrivateChat (param 8, bit 32)
         return new(maxChatDistance,
             (flags & 1) != 0, (flags & 2) != 0, (flags & 4) != 0,
-            (flags & 8) != 0, (flags & 16) != 0, (flags & 32) != 0,
-            (flags & 64) != 0, (flags & 128) != 0, (flags & 256) != 0,
-            (flags & 512) != 0, (flags & 1024) != 0);
+            (flags & 8) != 0, (flags & 16) != 0, (flags & 1024) != 0,
+            (flags & 32) != 0, (flags & 64) != 0, (flags & 128) != 0,
+            (flags & 256) != 0, (flags & 512) != 0);
     }
 }

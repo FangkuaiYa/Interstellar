@@ -185,7 +185,6 @@ public class VoiceChatSettingsWindow : MonoBehaviour
     private static readonly (string label, Func<bool> getter, Action<bool> setter)[] RoomBoolSettings = new (string, Func<bool>, Action<bool>)[]
     {
         (Get("vc.settings.wallsBlockSound", "Walls Block Sound"),          () => VoiceChatConfig.SyncedRoomSettings.WallsBlockSound,       v => VoiceChatConfig.SetHostWallsBlockSound(v)),
-        (Get("vc.settings.onlyHearInSight", "Only Hear In Sight"),        () => VoiceChatConfig.SyncedRoomSettings.OnlyHearInSight,       v => VoiceChatConfig.SetHostOnlyHearInSight(v)),
         (Get("vc.settings.impostorHearGhosts", "Impostor Hear Ghosts"),   () => VoiceChatConfig.SyncedRoomSettings.ImpostorHearGhosts,    v => VoiceChatConfig.SetHostImpostorHearGhosts(v)),
         (Get("vc.settings.onlyGhostsCanTalk", "Only Ghosts Can Talk"),    () => VoiceChatConfig.SyncedRoomSettings.OnlyGhostsCanTalk,     v => VoiceChatConfig.SetHostOnlyGhostsCanTalk(v)),
         (Get("vc.settings.hearInVent", "Hear Outside While In Vent"),      () => VoiceChatConfig.SyncedRoomSettings.HearInVent,            v => VoiceChatConfig.SetHostHearInVent(v)),
@@ -208,8 +207,6 @@ public class VoiceChatSettingsWindow : MonoBehaviour
         }
 
         {
-            bool onlyHearInSight = VoiceChatConfig.SyncedRoomSettings.OnlyHearInSight;
-            GUI.enabled = isHost && !onlyHearInSight;
             RenderSlider(Get("vc.settings.maxChatDistance", "Max Chat Distance"), 1.5f, 20f,
                 isHost ? VoiceChatConfig.HostMaxChatDistance
                        : VoiceChatConfig.SyncedRoomSettings.MaxChatDistance,

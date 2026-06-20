@@ -44,11 +44,6 @@
         "13": "墙壁可以隔音",
         "14": "牆壁可以隔音"
     },
-    "vc.settings.onlyHearInSight": {
-        "0": "Only Hear When Visible",
-        "13": "仅能听见视野内的人",
-        "14": "僅能聽見視野內的人"
-    },
   "vc.settings.impostorHearGhosts": {
     "0": "Impostor Can Hear Ghosts",
     "13": "内鬼可听到幽灵说话",
