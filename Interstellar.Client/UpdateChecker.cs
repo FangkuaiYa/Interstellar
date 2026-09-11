@@ -134,7 +134,6 @@ internal static class UpdateChecker
         popup.Show(msg);
     }
 
-    /// <summary>Download with progress bar. Try each mirror URL.</summary>
     [HideFromIl2Cpp]
     private static IEnumerator CoDownload(List<string> urls)
     {
@@ -263,8 +262,6 @@ internal static class UpdateChecker
         catch { return false; }
     }
 
-    // ── Button creation ───────────────────────────────────────────
-
     private static Transform CreateButton(GenericPopup popup, string name, string text, Vector3 offset)
     {
         var existing = popup.transform.FindChild(name);
@@ -284,8 +281,6 @@ internal static class UpdateChecker
         return button.transform;
     }
 
-    // ── JSON models ────────────────────────────────────────────────
-
     private class MirrorData
     {
         [JsonPropertyName("mirrors")]
@@ -303,8 +298,6 @@ internal static class UpdateChecker
         [JsonPropertyName("name")] public string Name { get; set; } = "";
         [JsonPropertyName("browser_download_url")] public string DownloadUrl { get; set; } = "";
     }
-
-    // ── IL2CPP-safe data access ────────────────────────────────────
 
     private static byte[]? GetUnstrippedData(DownloadHandler dh)
     {

@@ -4,18 +4,12 @@ using UnityEngine;
 
 namespace Interstellar.Voice;
 
-/// <summary>
-/// BCL-compatible voice chat configuration.
-/// Settings structure mirrors the BetterCrewLink independent client.
-/// </summary>
 public static class VoiceConfig
 {
     public static VoiceRoomSettings SyncedRoomSettings { get; } = new();
 
-    /// <summary>Fired when synced room settings change (received from host via voice server).</summary>
     public static Action<VoiceRoomSettings>? OnSyncedSettingsChanged;
 
-    // ── Server ────────────────────────────────────────────
     public static int SelectedServerIndex
     {
         get => _serverIndex?.Value ?? 0;
@@ -44,11 +38,9 @@ public static class VoiceConfig
         return url.Length > 25 ? url[..25] + "..." : url;
     }
 
-    // ── Audio devices ──────────────────────────────────────
     public static string MicrophoneDevice => _mic?.Value ?? "";
     public static string SpeakerDevice => _speaker?.Value ?? "";
 
-    // ── Volume ─────────────────────────────────────────────
     public static float MasterVolume
     {
         get => Math.Clamp(_masterVol?.Value ?? 1f, 0.1f, 3f);
@@ -60,7 +52,6 @@ public static class VoiceConfig
         set { if (_micVol != null) _micVol.Value = value; }
     }
 
-    // ── Audio processing ───────────────────────────────────
     public static bool NoiseSuppression
     {
         get => _noiseSuppression?.Value ?? true;
@@ -72,14 +63,12 @@ public static class VoiceConfig
         set { if (_echoCancellation != null) _echoCancellation.Value = value; }
     }
 
-    // ── VAD ────────────────────────────────────────────────
     public static bool VADEnabled
     {
         get => _vadEnabled?.Value ?? true;
         set { if (_vadEnabled != null) _vadEnabled.Value = value; }
     }
 
-    // ── Host room settings (synced via server when host) ───
     public static float HostMaxChatDistance
     {
         get => Math.Clamp(_hostMaxDist?.Value ?? 6f, 1.5f, 20f);
@@ -141,7 +130,6 @@ public static class VoiceConfig
         set { if (_hostMeetingOnly != null) _hostMeetingOnly.Value = value; }
     }
 
-    // ── Public lobby ───────────────────────────────────────
     public static bool PublicLobbyEnabled
     {
         get => _publicLobby?.Value ?? false;
@@ -158,9 +146,6 @@ public static class VoiceConfig
         set { if (_publicLang != null) _publicLang.Value = value; }
     }
 
-    // ── Per-player volume (0%-200%, remembered by player name) ─
-    // In-memory cache is the source of truth during play; mirrored to a
-    // single serialized config entry so it survives between sessions.
     public static readonly Dictionary<string, float> PlayerVolumes = new();
 
     public static float GetPlayerVolume(string playerName)
@@ -207,7 +192,6 @@ public static class VoiceConfig
         }
     }
 
-    // ── Device caches ──────────────────────────────────────
     public static List<string> MicrophoneDevices { get; } = new();
     public static List<string> SpeakerDevices { get; } = new();
     public static bool DeviceSelectionSupported =>
@@ -344,9 +328,6 @@ public static class VoiceConfig
     }
 }
 
-/// <summary>
-/// BCL server list — mirrors the server options available in BetterCrewLink.
-/// </summary>
 public static class ServerList
 {
     public static IReadOnlyList<(string Name, string URL)> GetServers()

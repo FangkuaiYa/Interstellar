@@ -8,56 +8,10 @@ using Object = UnityEngine.Object;
 
 namespace Interstellar.Voice;
 
-/// <summary>
-/// Lightweight Among Us native uGUI toolkit.
-/// Mimics TheOtherRoles MetaScreen / PresetManager look:
-/// dark rounded panel + white border + bold TMP text + colored action buttons.
-/// All controls are UnityEngine.UI + TextMeshProUGUI on a dedicated overlay canvas.
-///
-/// IL2CPP safety notes:
-///  - Sprite.Create is only used with the 4-arg overload (pixelsPerUnit), never the
-///    border-parameter overload (unreliable under IL2CPP interop). Outlines are drawn
-///    with a second layered Image instead.
-///  - TMP_Settings / font material access is fully try/catch protected.
-/// </summary>
 public static class VCUiKit
 {
-    // Shared drag lock: only one of our windows may be dragged at a time.
     public static bool AnyWindowDragging;
-
-    // Canvas
     private static Canvas _canvas;
-
-    public static Canvas EnsureCanvas()
-    {
-        if (_canvas != null) return _canvas;
-
-        var go = new GameObject("InterstellarVC_Canvas");
-        Object.DontDestroyOnLoad(go);
-        _canvas = go.AddComponent<Canvas>();
-        _canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-        _canvas.sortingOrder = 31000;
-
-        var scaler = go.AddComponent<CanvasScaler>();
-        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-        scaler.referenceResolution = new Vector2(1920f, 1080f);
-        scaler.matchWidthOrHeight = 0.5f;
-
-        go.AddComponent<GraphicRaycaster>();
-        EnsureEventSystem();
-        return _canvas;
-    }
-
-    public static void EnsureEventSystem()
-    {
-        if (Object.FindObjectOfType<EventSystem>() != null) return;
-        var go = new GameObject("EventSystem");
-        go.transform.SetParent(EnsureCanvas().transform, false);
-        go.AddComponent<EventSystem>();
-        go.AddComponent<StandaloneInputModule>();
-    }
-
-    // Assets
     private static Sprite _panelSprite;
     private static Sprite _roundSprite;
     private static Sprite _pixelSprite;
@@ -65,7 +19,6 @@ public static class VCUiKit
     private static TMP_FontAsset _font;
     private static Material _fontMaterial;
 
-    /// <summary>Rounded dark panel with white outline (two layered images, no 9-slice).</summary>
     public static Sprite PanelSprite
     {
         get
@@ -77,7 +30,6 @@ public static class VCUiKit
         }
     }
 
-    /// <summary>Rounded white sprite (tint via Image.color).</summary>
     public static Sprite RoundSprite
     {
         get
@@ -154,7 +106,42 @@ public static class VCUiKit
         }
     }
 
-    // Sprite generation
+    public static Canvas EnsureCanvas()
+    {
+        if (_canvas != null) return _canvas;
+
+        var go = new GameObject("InterstellarVC_Canvas");
+        Object.DontDestroyOnLoad(go);
+        _canvas = go.AddComponent<Canvas>();
+        _canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        _canvas.sortingOrder = 31000;
+
+        var scaler = go.AddComponent<CanvasScaler>();
+        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        scaler.referenceResolution = new Vector2(1920f, 1080f);
+        scaler.matchWidthOrHeight = 0.5f;
+
+        go.AddComponent<GraphicRaycaster>();
+        EnsureEventSystem();
+        return _canvas;
+    }
+
+    public static void EnsureEventSystem()
+    {
+        var es = Object.FindObjectOfType<EventSystem>();
+        if (es == null)
+        {
+            var go = new GameObject("EventSystem");
+            go.transform.SetParent(EnsureCanvas().transform, false);
+            es = go.AddComponent<EventSystem>();
+            go.AddComponent<StandaloneInputModule>();
+        }
+        else if (es.GetComponent<StandaloneInputModule>() == null)
+        {
+            es.gameObject.AddComponent<StandaloneInputModule>();
+        }
+    }
+
     private static bool InRoundedRect(float x, float y, float size, float r)
     {
         float cx = Mathf.Clamp(x, r, size - r);
@@ -163,7 +150,6 @@ public static class VCUiKit
         return dx * dx + dy * dy <= r * r;
     }
 
-    /// <summary>Rounded-rect sprite (4-arg Sprite.Create, safe under IL2CPP).</summary>
     public static Sprite CreateRoundedSprite(int size, int radius, Color fill)
     {
         var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
@@ -174,7 +160,6 @@ public static class VCUiKit
         return Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), size);
     }
 
-    // Primitives
     public static RectTransform NewRect(Transform parent, string name)
     {
         var go = new GameObject(name);
@@ -197,7 +182,6 @@ public static class VCUiKit
         return img;
     }
 
-    /// <summary>Layered panel (outline behind inner) inside one container so dragging moves both. Returns the container.</summary>
     public static RectTransform CreatePanel(Transform parent, string name, Vector2 size,
         Color border, Color fill, float thickness = 6f)
     {
@@ -207,9 +191,7 @@ public static class VCUiKit
         container.anchoredPosition = Vector2.zero;
         container.sizeDelta = size + Vector2.one * (thickness * 2f);
 
-        // outline (behind)
         CreateImage(container, name + "_Outline", Vector2.zero, size + Vector2.one * (thickness * 2f), PixelSprite, border);
-        // inner (front)
         CreateImage(container, name, Vector2.zero, size, PixelSprite, fill);
         return container;
     }
@@ -245,7 +227,6 @@ public static class VCUiKit
     public static Image CreateDivider(Transform parent, Vector2 anchoredPos, Vector2 size)
         => CreateImage(parent, "Divider", anchoredPos, size, PixelSprite, new Color(0.23f, 0.29f, 0.39f, 0.9f));
 
-    // Button
     public static Button CreateButton(Transform parent, string label, Vector2 anchoredPos, Vector2 size,
         Color bg, Action onClick, float fontSize = 24f, Color? textColor = null, FontStyles style = FontStyles.Bold)
     {
@@ -275,7 +256,6 @@ public static class VCUiKit
         return btn;
     }
 
-    // Toggle (Among Us style ON/OFF pill)
     public static Button CreateToggle(Transform parent, string label, Vector2 anchoredPos, Vector2 size,
         Func<bool> getter, Action<bool> setter, float fontSize = 22f)
     {
@@ -314,8 +294,6 @@ public static class VCUiKit
         return btn;
     }
 
-    // Slider - self-implemented. The UnityEngine.UI.Slider component misplaces its fill
-    // under IL2CPP, so we compute the value from the mouse position ourselves.
     public static void CreateSlider(Transform parent, Vector2 anchoredPos, Vector2 size, float min, float max,
         float value, Action<float> onChange, float fillHeight = 10f, bool enabled = true)
     {
@@ -325,7 +303,6 @@ public static class VCUiKit
         rt.anchoredPosition = anchoredPos;
         rt.sizeDelta = size;
 
-        // track
         var track = NewRect(rt, "Track");
         track.anchorMin = new Vector2(0f, 0.5f);
         track.anchorMax = new Vector2(1f, 0.5f);
@@ -338,7 +315,6 @@ public static class VCUiKit
         trackImg.color = new Color(0.18f, 0.21f, 0.28f, 1f);
         trackImg.raycastTarget = false;
 
-        // fill
         var fill = NewRect(rt, "Fill");
         fill.anchorMin = new Vector2(0f, 0.5f);
         fill.anchorMax = new Vector2(0f, 0.5f);
@@ -348,7 +324,6 @@ public static class VCUiKit
         fillImg.color = enabled ? new Color(0.24f, 0.62f, 0.96f, 1f) : new Color(0.30f, 0.34f, 0.42f, 1f);
         fillImg.raycastTarget = false;
 
-        // handle
         var handle = NewRect(rt, "Handle");
         handle.anchorMin = new Vector2(0f, 0.5f);
         handle.anchorMax = new Vector2(0f, 0.5f);
@@ -359,7 +334,6 @@ public static class VCUiKit
         handleImg.color = enabled ? Color.white : new Color(0.55f, 0.58f, 0.64f, 1f);
         handleImg.raycastTarget = false;
 
-        // full-size transparent hit area for pointer events
         var hit = NewRect(rt, "Hit");
         hit.anchorMin = Vector2.zero;
         hit.anchorMax = Vector2.one;
@@ -383,7 +357,6 @@ public static class VCUiKit
         {
             try
             {
-                // uGUI's official method handles all canvas types; overlay canvas -> null camera.
                 if (RectTransformUtility.ScreenPointToLocalPointInRectangle(rt, Input.mousePosition, null, out var local))
                 {
                     float t = Mathf.Clamp01(Mathf.InverseLerp(-sliderW * 0.5f, sliderW * 0.5f, local.x));
@@ -407,8 +380,6 @@ public static class VCUiKit
             var down = new EventTrigger.Entry { eventID = EventTriggerType.PointerDown };
             down.callback.AddListener((Action<BaseEventData>)(data =>
             {
-                // Consume the pointer event so the parent ScrollRect doesn't start scrolling
-                // while dragging the slider handle.
                 try
                 {
                     var ped = data.TryCast<PointerEventData>();
@@ -426,9 +397,8 @@ public static class VCUiKit
         SyncVisuals(value);
     }
 
-    // TMP_InputField
     public static TMP_InputField CreateTextInput(Transform parent, string name, Vector2 anchoredPos, Vector2 size,
-        Color bg, string placeholder, float fontSize, int characterLimit)
+        Color bg, string placeholderText, float fontSize, int characterLimit)
     {
         var rt = NewRect(parent, name);
         rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
@@ -446,7 +416,6 @@ public static class VCUiKit
         input.lineType = TMP_InputField.LineType.SingleLine;
         input.textViewport = rt;
 
-        // text component
         var textRt = NewRect(rt, "Text");
         textRt.anchorMin = new Vector2(0f, 0f);
         textRt.anchorMax = new Vector2(1f, 1f);
@@ -468,7 +437,6 @@ public static class VCUiKit
         text.raycastTarget = false;
         input.textComponent = text;
 
-        // placeholder
         var phRt = NewRect(rt, "Placeholder");
         phRt.anchorMin = new Vector2(0f, 0f);
         phRt.anchorMax = new Vector2(1f, 1f);
@@ -487,7 +455,7 @@ public static class VCUiKit
         ph.fontSize = fontSize;
         ph.color = new Color(0.62f, 0.66f, 0.74f, 1f);
         ph.alignment = TextAlignmentOptions.Left;
-        ph.text = placeholder;
+        ph.text = placeholderText;
         ph.raycastTarget = false;
         input.placeholder = ph;
 

@@ -13,7 +13,7 @@ namespace Interstellar;
 public class InterstellarPlugin : BasePlugin
 {
     public const string Id = "com.interstellar.voice";
-    public const string PluginVersion = "3.1.3";
+    public const string PluginVersion = "3.1.4";
     public static ManualLogSource Logger { get; private set; } = null!;
 
     private const string ResPrefix = "Lib.";
@@ -56,6 +56,7 @@ public class InterstellarPlugin : BasePlugin
         ClassInjector.RegisterTypeInIl2Cpp<VoiceSettingsWindow>();
         ClassInjector.RegisterTypeInIl2Cpp<PublicLobbyWindow>();
         ClassInjector.RegisterTypeInIl2Cpp<PlayerVolumeWindow>();
+        ClassInjector.RegisterTypeInIl2Cpp<VCTextField>();
 
         var settingsWindow = this.AddComponent<VoiceSettingsWindow>();
         var lobbyWindow = this.AddComponent<PublicLobbyWindow>();

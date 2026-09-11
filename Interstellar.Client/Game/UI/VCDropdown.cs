@@ -7,11 +7,6 @@ using Object = UnityEngine.Object;
 
 namespace Interstellar.Voice;
 
-/// <summary>
-/// Dropdown option list - mimics TheOtherRoles PresetManager's action-button rows:
-/// dark rounded panel + white border + title + vertical option buttons (current highlighted).
-/// Click outside to close.
-/// </summary>
 public static class VCDropdown
 {
     private static GameObject _drop;

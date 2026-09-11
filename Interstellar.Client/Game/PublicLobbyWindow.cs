@@ -11,11 +11,6 @@ using Object = UnityEngine.Object;
 
 namespace Interstellar;
 
-/// <summary>
-/// Public Lobby browser - native uGUI implementation (same look as the settings window).
-/// WebSocket lobby-list logic is unchanged; only the rendering was converted from IMGUI to uGUI.
-/// The lobby list is rebuilt whenever the underlying data changes (polled in Update).
-/// </summary>
 public class PublicLobbyWindow : MonoBehaviour
 {
     public PublicLobbyWindow(System.IntPtr ptr) : base(ptr) { }
@@ -100,8 +95,6 @@ public class PublicLobbyWindow : MonoBehaviour
         if (_uiRoot != null) _uiRoot.SetActive(false);
         StopLobbyConnection();
     }
-
-    // ── Lobby WebSocket (unchanged from IMGUI version) ─────────
 
     async void StartLobbyConnection()
     {
@@ -213,8 +206,6 @@ public class PublicLobbyWindow : MonoBehaviour
         PublicLobbyManager.StopWatching();
     }
 
-    // ── Window frame ───────────────────────────────────────────
-
     private void BuildUI()
     {
         if (_uiRoot != null) Object.Destroy(_uiRoot);
@@ -321,8 +312,6 @@ public class PublicLobbyWindow : MonoBehaviour
         scroll.verticalNormalizedPosition = 1f;
         _scroll = scroll;
     }
-
-    // ── Lobby list rendering ───────────────────────────────────
 
     private float _y;
 

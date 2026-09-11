@@ -8,13 +8,6 @@ using Object = UnityEngine.Object;
 
 namespace Interstellar.Voice;
 
-/// <summary>
-/// Voice Chat settings window - native uGUI implementation.
-/// Mimics TheOtherRoles MetaScreen / PresetManager page style:
-/// dark rounded panel + white border + bold title + list rows + colored action buttons + input popup / dropdown.
-/// Uses "refresh-style" rendering (rebuilds content rows on Open / server change),
-/// same as PresetManager's UpdatePresetScreen.
-/// </summary>
 public class VoiceSettingsWindow : MonoBehaviour
 {
     public VoiceSettingsWindow(System.IntPtr ptr) : base(ptr) { }
@@ -23,9 +16,7 @@ public class VoiceSettingsWindow : MonoBehaviour
     public bool ShowWindow { get; private set; }
 
     private const KeyCode ToggleKey = KeyCode.F1;
-
-    // Layout constants (1920x1080 base, scaled by CanvasScaler)
-    private const float WinW = 900f;
+    private const float WinW = 940f;
     private const float WinH = 900f;
     private const float TitleBarH = 64f;
     private const float BottomH = 56f;
@@ -36,14 +27,12 @@ public class VoiceSettingsWindow : MonoBehaviour
     private bool _isAndroid => Application.platform == RuntimePlatform.Android;
     private float F(float px) => _isAndroid ? px * 1.28f : px;
 
-    // UI refs
     private GameObject _uiRoot;
     private RectTransform _winRt;
     private Canvas _canvas;
     private ScrollRect _scroll;
     private RectTransform _content;
 
-    // State
     private bool _built;
     private bool _needsDeviceRefresh = true;
     private bool _dragging;
@@ -51,10 +40,7 @@ public class VoiceSettingsWindow : MonoBehaviour
 
     private static readonly string[] Langs = { "en", "zh_CN", "ja", "ko", "ru", "es", "pt_BR", "Other" };
 
-    void Awake()
-    {
-        Instance = this;
-    }
+    void Awake() => Instance = this;
 
     void OnDestroy()
     {
@@ -95,7 +81,6 @@ public class VoiceSettingsWindow : MonoBehaviour
                 _needsDeviceRefresh = false;
             }
 
-            // Align our overlay canvas to the game's display (multi-monitor safety)
             try
             {
                 var cam = Object.FindObjectOfType<Camera>();
@@ -103,7 +88,6 @@ public class VoiceSettingsWindow : MonoBehaviour
             }
             catch { }
 
-            // avoid stacking two windows on top of each other
             try { PublicLobbyWindow.Instance?.Close(); } catch { }
             try { PlayerVolumeWindow.Instance?.Close(); } catch { }
 
@@ -115,21 +99,10 @@ public class VoiceSettingsWindow : MonoBehaviour
 
             RebuildContent();
             if (_scroll != null) _scroll.verticalNormalizedPosition = 1f;
-
-            try
-            {
-                InterstellarPlugin.Logger?.LogInfo(
-                    $"[VC] Settings shown: canvasActive={_canvas.gameObject.activeSelf} " +
-                    $"renderMode={_canvas.renderMode} sortingOrder={_canvas.sortingOrder} " +
-                    $"uiRootActive={_uiRoot.activeSelf} winPos={_winRt.anchoredPosition} " +
-                    $"winSize={_winRt.sizeDelta} scaleFactor={_canvas.scaleFactor}");
-            }
-            catch { }
         }
         catch (Exception e)
         {
             InterstellarPlugin.Logger?.LogError($"[VC] Open settings failed: {e}");
-            // Reset so the next F1 retries building instead of staying broken forever.
             _built = false;
             _uiRoot = null;
         }
@@ -145,9 +118,6 @@ public class VoiceSettingsWindow : MonoBehaviour
         if (_uiRoot != null) _uiRoot.SetActive(false);
     }
 
-    // ========================================================
-    //  Window frame (built once)
-    // ========================================================
     private void BuildUI()
     {
         if (_uiRoot != null) Object.Destroy(_uiRoot);
@@ -162,7 +132,6 @@ public class VoiceSettingsWindow : MonoBehaviour
         rootRt.offsetMax = Vector2.zero;
         _uiRoot.SetActive(false);
 
-        // Full-screen dim (click outside to close)
         var dim = VCUiKit.CreateImage(_uiRoot.transform, "Dim", Vector2.zero, Vector2.zero, VCUiKit.PixelSprite, new Color(0f, 0f, 0f, 0.42f));
         var dimRt = (RectTransform)dim.transform;
         dimRt.anchorMin = Vector2.zero;
@@ -173,9 +142,8 @@ public class VoiceSettingsWindow : MonoBehaviour
         dimBtn.transition = Selectable.Transition.None;
         dimBtn.onClick.AddListener((Action)(() => Close()));
 
-        // Window panel (white outline + dark inner, dragged together)
         _winRt = VCUiKit.CreatePanel(_uiRoot.transform, "Window", new Vector2(WinW, WinH),
-            new Color(0.88f, 0.94f, 1f, 1f), new Color(0.07f, 0.10f, 0.16f, 0.97f), 6f);
+            new Color(0.35f, 0.35f, 0.38f, 1f), new Color(0.06f, 0.06f, 0.08f, 0.98f), 4f);
         _winRt.anchorMin = _winRt.anchorMax = new Vector2(0.5f, 0.5f);
         _winRt.anchoredPosition = Vector2.zero;
 
@@ -187,7 +155,6 @@ public class VoiceSettingsWindow : MonoBehaviour
 
     private void BuildTitleBar(Transform win)
     {
-        // Title
         var title = VCUiKit.CreateText(win, "Title", Get("vc.settings.title", "Voice Chat Settings"),
             Vector2.zero, new Vector2(380f, 44f), F(28f), new Color(0.92f, 0.95f, 1f, 1f),
             FontStyles.Bold, TextAlignmentOptions.Left);
@@ -197,7 +164,6 @@ public class VoiceSettingsWindow : MonoBehaviour
         titleRt.pivot = new Vector2(0f, 0.5f);
         titleRt.anchoredPosition = new Vector2(30f, WinH / 2f - TitleBarH / 2f);
 
-        // Public Lobby button (right of title bar)
         var lobby = VCUiKit.CreateButton(win, Get("vc.settings.publicLobby", "Public Lobby"),
             Vector2.zero, new Vector2(190f, 44f), new Color(0.20f, 0.42f, 0.80f, 1f), () =>
             {
@@ -207,7 +173,6 @@ public class VoiceSettingsWindow : MonoBehaviour
         lobbyRt.anchorMin = lobbyRt.anchorMax = new Vector2(1f, 0.5f);
         lobbyRt.anchoredPosition = new Vector2(-165f, WinH / 2f - TitleBarH / 2f);
 
-        // Player Volume button (per-player volume sliders — also opened with F3)
         var playerVol = VCUiKit.CreateButton(win, Get("vc.settings.playerVolume", "Player Volume"),
             Vector2.zero, new Vector2(190f, 44f), new Color(0.24f, 0.34f, 0.24f, 1f), () =>
             {
@@ -217,7 +182,6 @@ public class VoiceSettingsWindow : MonoBehaviour
         playerVolRt.anchorMin = playerVolRt.anchorMax = new Vector2(1f, 0.5f);
         playerVolRt.anchoredPosition = new Vector2(-369f, WinH / 2f - TitleBarH / 2f);
 
-        // Close button (top right)
         var close = VCUiKit.CreateButton(win, "X", Vector2.zero, new Vector2(44f, 44f),
             new Color(0.58f, 0.22f, 0.24f, 1f), () => Close(), F(24f));
         var closeRt = (RectTransform)close.transform;
@@ -244,7 +208,6 @@ public class VoiceSettingsWindow : MonoBehaviour
         _content.anchoredPosition = Vector2.zero;
         _content.sizeDelta = new Vector2(ContentW, 10f);
 
-        // Scroll grab background (transparent, lets you scroll on empty areas)
         var bg = VCUiKit.CreateImage(_content, "ScrollBG", Vector2.zero, _content.sizeDelta, VCUiKit.PixelSprite, Color.clear);
         var bgRt = bg.rectTransform;
         bgRt.anchorMin = Vector2.zero;
@@ -277,13 +240,11 @@ public class VoiceSettingsWindow : MonoBehaviour
         verRt.anchoredPosition = new Vector2(30f, 14f);
     }
 
-    /// <summary>Drag the window by its title bar, polled in Update (no EventTrigger, IL2CPP-safe).</summary>
     private void UpdateDrag()
     {
         if (!ShowWindow || _winRt == null || _canvas == null) return;
 
         float scale = Mathf.Max(0.001f, _canvas.scaleFactor);
-        // Mouse position in canvas units, relative to canvas center
         Vector2 mouseCanvas = (Vector2)Input.mousePosition - new Vector2(Screen.width, Screen.height) * 0.5f;
         mouseCanvas /= scale;
 
@@ -302,8 +263,6 @@ public class VoiceSettingsWindow : MonoBehaviour
             _dragging = false;
             VCUiKit.AnyWindowDragging = false;
         }
-        // Safety: if the mouse is no longer held, stop dragging even if the up event was missed
-        // (e.g. the window was closed and reopened while the pointer was down).
         if (_dragging && !Input.GetMouseButton(0))
         {
             _dragging = false;
@@ -327,9 +286,6 @@ public class VoiceSettingsWindow : MonoBehaviour
         _winRt.anchoredPosition = p;
     }
 
-    // ========================================================
-    //  Content rendering (refresh-style)
-    // ========================================================
     private float _y;
 
     private void RebuildContent()
@@ -380,7 +336,6 @@ public class VoiceSettingsWindow : MonoBehaviour
         row.sizeDelta = new Vector2(ContentW, RowH);
         _y += RowH;
 
-        // Row divider (PresetManager list style)
         var div = VCUiKit.CreateDivider(row, Vector2.zero, new Vector2(ContentW - 40f, 2f));
         var divRt = div.rectTransform;
         divRt.anchorMin = new Vector2(0f, 0f);
@@ -404,7 +359,7 @@ public class VoiceSettingsWindow : MonoBehaviour
         _y += 58f;
     }
 
-    private TextMeshProUGUI AddLabel(Transform row, string text, float width = 360f, float fontSize = 0f)
+    private TextMeshProUGUI AddLabel(Transform row, string text, float width = 380f, float fontSize = 0f)
     {
         var tmp = VCUiKit.CreateText(row, "Label", text,
             new Vector2(-ContentW / 2f + 70f + width / 2f, 0f), new Vector2(width, RowH - 12f),
@@ -419,7 +374,7 @@ public class VoiceSettingsWindow : MonoBehaviour
         tog.interactable = enabled;
         var trt = (RectTransform)tog.transform;
         trt.anchorMin = trt.anchorMax = new Vector2(1f, 0.5f);
-        trt.anchoredPosition = new Vector2(-40f, 0f);
+        trt.anchoredPosition = new Vector2(-50f, 0f);
     }
 
     private void AddRowSlider(Transform row, string label, float min, float max, float value, Action<float> onChange,
@@ -427,19 +382,21 @@ public class VoiceSettingsWindow : MonoBehaviour
     {
         AddLabel(row, label);
 
-        var valueTmp = VCUiKit.CreateText(row, "Value", formatter(value), Vector2.zero, new Vector2(70f, RowH - 12f),
+        float sliderW = 220f;
+        float valueW = 60f;
+
+        var valueTmp = VCUiKit.CreateText(row, "Value", formatter(value), Vector2.zero, new Vector2(valueW, RowH - 12f),
             F(20f), new Color(1f, 0.86f, 0.55f, 1f), FontStyles.Bold, TextAlignmentOptions.Right);
         var vrt = (RectTransform)valueTmp.transform;
         vrt.anchorMin = vrt.anchorMax = new Vector2(1f, 0.5f);
         vrt.anchoredPosition = new Vector2(-40f, 0f);
 
-        float sliderW = 250f;
-        VCUiKit.CreateSlider(row, new Vector2(ContentRight - 40f - 70f - 20f - sliderW / 2f, 0f),
+        float sliderX = ContentRight - valueW - 8f - sliderW / 2f;
+        VCUiKit.CreateSlider(row, new Vector2(sliderX, 0f),
             new Vector2(sliderW, 44f), min, max, value,
             v => { onChange(v); valueTmp.text = formatter(v); }, 10f, enabled);
     }
 
-    // -- Server ----------------------------------------------
     private void RenderServerSection()
     {
         AddSectionTitle(Get("vc.settings.server", "Server"));
@@ -451,15 +408,13 @@ public class VoiceSettingsWindow : MonoBehaviour
         int cur = VoiceConfig.SelectedServerIndex;
         string curName = cur >= 0 && cur < serverNames.Length ? serverNames[cur] : "Custom...";
 
-        // Refresh button (rightmost)
         var refresh = VCUiKit.CreateButton(row, Get("vc.settings.refresh", "Refresh"),
             Vector2.zero, new Vector2(110f, 44f), new Color(0.30f, 0.36f, 0.48f, 1f),
             () => VoiceRoom.RestartForCurrentGame(), F(19f));
         var rrt = (RectTransform)refresh.transform;
         rrt.anchorMin = rrt.anchorMax = new Vector2(1f, 0.5f);
-        rrt.anchoredPosition = new Vector2(-40f, 0f);
+        rrt.anchoredPosition = new Vector2(-50f, 0f);
 
-        // Server selector button
         var serverBtn = VCUiKit.CreateButton(row, curName + "  v", Vector2.zero, new Vector2(330f, 44f),
             new Color(0.16f, 0.21f, 0.32f, 1f), () =>
             {
@@ -467,16 +422,15 @@ public class VoiceSettingsWindow : MonoBehaviour
             }, F(19f));
         var srt = (RectTransform)serverBtn.transform;
         srt.anchorMin = srt.anchorMax = new Vector2(1f, 0.5f);
-        srt.anchoredPosition = new Vector2(-40f - 110f - 14f - 165f, 0f);
+        srt.anchoredPosition = new Vector2(-50f - 110f - 14f - 165f, 0f);
 
-        // Custom URL row — inline text input (GMIA-style)
         if (cur >= serverNames.Length - 1)
         {
             var urlRow = AddRow();
             AddLabel(urlRow, Get("vc.settings.url", "URL") + ":");
 
             var inputField = VCUiKit.CreateTextInput(urlRow.transform, "URLInput",
-                Vector2.zero, new Vector2(380f, 44f),
+                new Vector2(-30f, 0f), new Vector2(480f, 44f),
                 new Color(0.10f, 0.13f, 0.20f, 1f), "https://...", 18f, 200);
             inputField.text = VoiceConfig.CustomServerURL ?? "";
             var irt = (RectTransform)inputField.transform;
@@ -494,7 +448,7 @@ public class VoiceSettingsWindow : MonoBehaviour
                 }, F(18f));
             var srt2 = (RectTransform)saveBtn.transform;
             srt2.anchorMin = srt2.anchorMax = new Vector2(1f, 0.5f);
-            srt2.anchoredPosition = new Vector2(-40f, 0f);
+            srt2.anchoredPosition = new Vector2(-50f, 0f);
         }
     }
 
@@ -509,7 +463,6 @@ public class VoiceSettingsWindow : MonoBehaviour
         RebuildContent();
     }
 
-    // -- Personal --------------------------------------------
     private void RenderPersonalSection()
     {
         AddSectionTitle(Get("vc.settings.personal", "Personal"));
@@ -585,7 +538,6 @@ public class VoiceSettingsWindow : MonoBehaviour
         AddRowSlider(row, label, min, max, value, onChange, formatter, enabled);
     }
 
-    // -- Room ------------------------------------------------
     private void RenderRoomSection(bool isHost)
     {
         AddSectionTitle(Get("vc.settings.room", "Room Settings"));
@@ -631,12 +583,10 @@ public class VoiceSettingsWindow : MonoBehaviour
         AddRowToggle(row, label, getter, setter, isHost);
     }
 
-    // -- Public Lobby ----------------------------------------
     private void RenderPublicLobbySection(bool isHost)
     {
         AddSectionTitle(Get("vc.settings.publicLobby", "Public Lobby"));
 
-        // Enable
         var row = AddRow();
         AddLabel(row, Get("vc.settings.publicLobbyEnable", "Enable Public Lobby"));
         var tog = VCUiKit.CreateToggle(row, "T", Vector2.zero, new Vector2(110f, 44f),
@@ -645,11 +595,10 @@ public class VoiceSettingsWindow : MonoBehaviour
         tog.interactable = isHost;
         var trt = (RectTransform)tog.transform;
         trt.anchorMin = trt.anchorMax = new Vector2(1f, 0.5f);
-        trt.anchoredPosition = new Vector2(-40f, 0f);
+        trt.anchoredPosition = new Vector2(-50f, 0f);
 
         if (VoiceConfig.PublicLobbyEnabled)
         {
-            // Title
             var titleRow = AddRow();
             AddLabel(titleRow, Get("vc.settings.title", "Title") + ":");
             var edit = VCUiKit.CreateButton(titleRow, Get("vc.settings.edit", "Edit"),
@@ -664,13 +613,12 @@ public class VoiceSettingsWindow : MonoBehaviour
                 }, F(19f));
             var ert = (RectTransform)edit.transform;
             ert.anchorMin = ert.anchorMax = new Vector2(1f, 0.5f);
-            ert.anchoredPosition = new Vector2(-40f, 0f);
+            ert.anchoredPosition = new Vector2(-50f, 0f);
 
             VCUiKit.CreateText(titleRow, "Txt", Truncate(VoiceConfig.PublicLobbyTitle, 26), Vector2.zero,
                 new Vector2(430f, RowH - 12f), F(19f), new Color(0.72f, 0.77f, 0.88f, 1f),
                 FontStyles.Normal, TextAlignmentOptions.Left, true);
 
-            // Language
             var langRow = AddRow();
             AddLabel(langRow, Get("vc.settings.language", "Language") + ":");
             int langIdx = Mathf.Max(0, Array.IndexOf(Langs, VoiceConfig.PublicLobbyLanguage));
@@ -683,11 +631,10 @@ public class VoiceSettingsWindow : MonoBehaviour
                 }, F(19f));
             var lrt = (RectTransform)langBtn.transform;
             lrt.anchorMin = lrt.anchorMax = new Vector2(1f, 0.5f);
-            lrt.anchoredPosition = new Vector2(-40f - 100f, 0f);
+            lrt.anchoredPosition = new Vector2(-50f - 100f, 0f);
         }
     }
 
-    // -- Advanced --------------------------------------------
     private void RenderAdvancedSection()
     {
         AddSectionTitle(Get("vc.settings.advanced", "Advanced"));
@@ -705,7 +652,6 @@ public class VoiceSettingsWindow : MonoBehaviour
             () => VoiceConfig.VADEnabled, v => VoiceConfig.VADEnabled = v);
     }
 
-    // -- Util ------------------------------------------------
     private static string Truncate(string s, int maxLen) =>
         s.Length <= maxLen ? s : s[..(maxLen - 3)] + "...";
 }

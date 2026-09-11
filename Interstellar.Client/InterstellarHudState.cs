@@ -138,8 +138,6 @@ public static class InterstellarHudState
         return host;
     }
 
-    // ── Sprite utilities (used by other files) ──────────────────
-
     static readonly Dictionary<string, Sprite> _spriteCache = new();
 
     public static Sprite LoadSprite(string path)
