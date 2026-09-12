@@ -19,7 +19,7 @@ public class PlayerVolumeWindow : MonoBehaviour
 
     private const KeyCode ToggleKey = KeyCode.F3;
 
-    private const float WinW = 740f;
+    private const float WinW = 860f;
     private const float WinH = 760f;
     private const float TitleBarH = 64f;
     private const float RowH = 68f;
@@ -141,7 +141,8 @@ public class PlayerVolumeWindow : MonoBehaviour
         dimRt.offsetMax = Vector2.zero;
         var dimBtn = dim.gameObject.AddComponent<Button>();
         dimBtn.transition = Selectable.Transition.None;
-        dimBtn.onClick.AddListener((Action)(() => Close()));
+        Action dimHandler = () => { try { Close(); } catch { } };
+        dimBtn.onClick.AddListener(dimHandler);
 
         _winRt = VCUiKit.CreatePanel(_uiRoot.transform, "Window", new Vector2(WinW, WinH),
             new Color(0.88f, 0.94f, 1f, 1f), new Color(0.07f, 0.10f, 0.16f, 0.97f), 6f);
@@ -304,7 +305,7 @@ public class PlayerVolumeWindow : MonoBehaviour
             displayName = p.PlayerName;
 
         VCUiKit.CreateText(row, "Name", displayName,
-            new Vector2(-ContentW / 2f + 170f, 0f), new Vector2(250f, RowH - 12f),
+            new Vector2(-ContentW / 2f + 40f, 0f), new Vector2(200f, RowH - 12f),
             F(21f), Color.white, FontStyles.Bold, TextAlignmentOptions.Left, true);
 
         string pname = p.PlayerName;
@@ -315,20 +316,23 @@ public class PlayerVolumeWindow : MonoBehaviour
             FontStyles.Bold, TextAlignmentOptions.Right);
         var vrt = (RectTransform)valueTmp.transform;
         vrt.anchorMin = vrt.anchorMax = new Vector2(1f, 0.5f);
-        vrt.anchoredPosition = new Vector2(-40f, 0f);
+        vrt.anchoredPosition = new Vector2(-20f, 0f);
 
-        float autoW = 76f;
+        float autoW = 80f;
+        float autoX = -(20f + 70f + 14f + autoW / 2f);
         VCUiKit.CreateToggle(row, TranslationHelper.Get("vc.player.auto", "Auto"),
-            new Vector2(ContentRight - 40f - autoW / 2f, 0f), new Vector2(autoW, 40f),
+            new Vector2(autoX, 0f), new Vector2(autoW, 40f),
             () => VoiceConfig.GetPlayerAutoVolume(pname),
             v =>
             {
                 VoiceConfig.SetPlayerAutoVolume(pname, v);
-                RebuildContent(); // re-render this row so the slider lock state updates
-            }, 16f);
+                RebuildContent();
+            }, 18f);
 
-        float sliderW = 200f;
-        VCUiKit.CreateSlider(row, new Vector2(ContentRight - 40f - autoW - 20f - 70f - 20f - sliderW / 2f, 0f),
+        float sliderW = ContentW - 200f - 20f - 70f - 14f - autoW - 16f - 40f;
+        if (sliderW < 100f) sliderW = 100f;
+        float sliderX = autoX - autoW / 2f - 16f - sliderW / 2f;
+        VCUiKit.CreateSlider(row, new Vector2(sliderX, 0f),
             new Vector2(sliderW, 44f), 0f, 2f, p.Volume,
             v =>
             {

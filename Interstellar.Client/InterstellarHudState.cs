@@ -104,30 +104,53 @@ public static class InterstellarHudState
         if (_serverInfoText != null) return;
         var go = new GameObject("VC_ServerInfo");
         go.transform.SetParent(hud.transform, false);
-        go.transform.localPosition = new Vector3(-4.64f, -2.74f, -10f);
+        go.transform.localPosition = new Vector3(-3.6f, -2.74f, -10f);
         _serverInfoText = go.AddComponent<TextMeshPro>();
         _serverInfoText.fontSize = 1.2f;
-        _serverInfoText.alignment = TextAlignmentOptions.Right;
+        _serverInfoText.alignment = TextAlignmentOptions.Left;
         _serverInfoText.sortingOrder = 32767;
-        _serverInfoText.rectTransform.sizeDelta = new Vector2(2f, 0.5f);
+        _serverInfoText.rectTransform.sizeDelta = new Vector2(4f, 0.5f);
     }
 
     private static void UpdateServerInfoText()
     {
-        if (_serverInfoText == null || !VoiceServerState.HasInfo) { if (_serverInfoText != null) _serverInfoText.text = ""; return; }
-        int cur = VoiceServerState.CurrentTotalPlayers;
+        if (_serverInfoText == null) return;
+
+        bool inLobby = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name == "OnlineGame";
+        if (!inLobby) { _serverInfoText.text = ""; return; }
+
+        var room = VoiceRoom.Current;
+        if (room == null) { _serverInfoText.text = ""; return; }
+
+        string serverUrl = VoiceServerState.HasInfo ? VoiceServerState.VoiceServerUrl : VoiceConfig.GetActiveServerURL();
+        if (string.IsNullOrEmpty(serverUrl)) { _serverInfoText.text = ""; return; }
+
+        string serverName = ResolveServerName(serverUrl);
+        int cur = 0;
+        foreach (var _ in room.AllClients) cur++;
         int opt = VoiceServerState.OptimalPlayers;
-        string label = VoiceConfig.GetServerLocationName(VoiceServerState.VoiceServerUrl) ?? ShortenServerUrl(VoiceServerState.VoiceServerUrl);
+
         if (opt > 0)
         {
-            _serverInfoText.text = label + "  " + cur + "/" + opt;
-            _serverInfoText.color = VoiceServerState.IsAtCapacity ? new Color(1f, 0.65f, 0.2f) : new Color(0.6f, 0.85f, 0.6f);
+            _serverInfoText.text = "Interstellar Server: " + serverName + "  " + cur + "/" + opt;
+            _serverInfoText.color = opt > 0 && cur >= opt ? new Color(1f, 0.65f, 0.2f) : new Color(0.6f, 0.85f, 0.6f);
         }
         else
         {
-            _serverInfoText.text = label + "  " + cur;
+            _serverInfoText.text = "Interstellar Server: " + serverName + "  " + cur;
             _serverInfoText.color = new Color(0.6f, 0.85f, 0.6f);
         }
+    }
+
+    private static string ResolveServerName(string url)
+    {
+        var servers = ServerList.GetServers();
+        foreach (var (name, serverUrl) in servers)
+        {
+            if (string.Equals(serverUrl.TrimEnd('/'), url.TrimEnd('/'), System.StringComparison.OrdinalIgnoreCase))
+                return name;
+        }
+        return ShortenServerUrl(url);
     }
 
     static string ShortenServerUrl(string url)

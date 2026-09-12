@@ -449,14 +449,20 @@ internal class ServerConnection : IConnectionContext, IDisposable
     {
         _disposed = true;
         _pingTimer?.Dispose();
-        if (_sws?.State == WebSocketState.Open)
-        {
-            try { _sws.SendAsync(Encoding.UTF8.GetBytes("42[\"leave\"]"), WebSocketMessageType.Text).Wait(2000); } catch { }
-        }
         _cts?.Cancel();
         var sws = _sws; _sws = null;
-        try { sws?.CloseAsync().Wait(3000); } catch { }
-        try { sws?.Dispose(); } catch { }
+        if (sws == null) return;
+        System.Threading.Tasks.Task.Run(() =>
+        {
+            try
+            {
+                if (sws.State == WebSocketState.Open)
+                    sws.SendAsync(Encoding.UTF8.GetBytes("42[\"leave\"]"), WebSocketMessageType.Text).Wait(2000);
+            }
+            catch { }
+            try { sws.CloseAsync().Wait(3000); } catch { }
+            try { sws.Dispose(); } catch { }
+        });
         InterstellarPlugin.Logger.LogInfo("[Srv] Disconnected");
     }
     public void Dispose() { Disconnect(); }

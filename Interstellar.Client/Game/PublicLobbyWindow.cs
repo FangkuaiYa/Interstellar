@@ -229,7 +229,8 @@ public class PublicLobbyWindow : MonoBehaviour
         dimRt.offsetMax = Vector2.zero;
         var dimBtn = dim.gameObject.AddComponent<Button>();
         dimBtn.transition = Selectable.Transition.None;
-        dimBtn.onClick.AddListener((Action)(() => Close()));
+        Action dimHandler = () => { try { Close(); } catch { } };
+        dimBtn.onClick.AddListener(dimHandler);
 
         // window panel (sharp corners + white outline, dragged together)
         _winRt = VCUiKit.CreatePanel(_uiRoot.transform, "Window", new Vector2(WinW, WinH),

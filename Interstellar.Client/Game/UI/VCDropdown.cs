@@ -35,7 +35,8 @@ public static class VCDropdown
         dimRt.offsetMax = Vector2.zero;
         var dimBtn = dim.gameObject.AddComponent<Button>();
         dimBtn.transition = Selectable.Transition.None;
-        dimBtn.onClick.AddListener((Action)(() => Hide()));
+        Action hideHandler = () => { try { Hide(); } catch { } };
+        dimBtn.onClick.AddListener(hideHandler);
 
         // Panel
         const float rowH = 64f;

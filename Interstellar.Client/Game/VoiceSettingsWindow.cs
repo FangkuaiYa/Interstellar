@@ -56,8 +56,6 @@ public class VoiceSettingsWindow : MonoBehaviour
     {
         if (Input.GetKeyDown(ToggleKey)) Toggle();
         if (ShowWindow && Input.GetKeyDown(KeyCode.Escape)) Close();
-        if (VCTextInputPopup.IsShowing && (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter)))
-            VCTextInputPopup.Confirm();
     }
 
     public void Toggle()
@@ -100,8 +98,11 @@ public class VoiceSettingsWindow : MonoBehaviour
             _uiRoot.SetActive(true);
             ShowWindow = true;
 
-            var opt = Object.FindObjectOfType<OptionsMenuBehaviour>();
-            if (opt) opt.Close();
+            if (!_isAndroid)
+            {
+                var opt = Object.FindObjectOfType<OptionsMenuBehaviour>();
+                if (opt) { try { opt.Close(); } catch { } }
+            }
 
             // Kick off a background refresh of the remote server list so the
             // dropdown reflects server.json changes without a client update.
@@ -134,7 +135,6 @@ public class VoiceSettingsWindow : MonoBehaviour
         ShowWindow = false;
         _dragging = false;
         VCUiKit.AnyWindowDragging = false;
-        VCTextInputPopup.Hide();
         VCDropdown.Hide();
         if (_uiRoot != null) _uiRoot.SetActive(false);
     }
@@ -165,7 +165,8 @@ public class VoiceSettingsWindow : MonoBehaviour
         dimRt.offsetMax = Vector2.zero;
         var dimBtn = dim.gameObject.AddComponent<Button>();
         dimBtn.transition = Selectable.Transition.None;
-        dimBtn.onClick.AddListener((Action)(() => Close()));
+        Action dimHandler = () => { try { Close(); } catch { } };
+        dimBtn.onClick.AddListener(dimHandler);
 
         // Window panel (white outline + dark inner, dragged together)
         // Background set to pure black per user request (was dark navy 0.07,0.10,0.16).
@@ -340,8 +341,14 @@ public class VoiceSettingsWindow : MonoBehaviour
         }
 
         _y = 0f;
-        bool isHost = (AmongUsClient.Instance?.AmHost ?? false)
-            && AmongUsClient.Instance?.GameState == InnerNet.InnerNetClient.GameStates.Joined;
+        bool isHost = false;
+        try
+        {
+            var inst = AmongUsClient.Instance;
+            if (inst != null)
+                isHost = inst.AmHost && inst.GameState == InnerNet.InnerNetClient.GameStates.Joined;
+        }
+        catch { }
 
         try
         {
@@ -464,46 +471,19 @@ public class VoiceSettingsWindow : MonoBehaviour
         srt.anchorMin = srt.anchorMax = new Vector2(1f, 0.5f);
         srt.anchoredPosition = new Vector2(-40f - 110f - 14f - 165f, 0f);
 
-        // Custom URL row — was an inline TMP_InputField nested inside this
-        // window's ScrollRect. That's the reason it barely worked: a
-        // TMP_InputField nested inside a ScrollRect is fighting the same
-        // ScrollRect for pointer-down/drag events, so most clicks got
-        // interpreted as "start scrolling" instead of "focus the field",
-        // and the couple of characters that did land were from the rare
-        // click that didn't jitter enough to trigger the ScrollRect's drag
-        // threshold. VCTextInputPopup (used elsewhere in this same file,
-        // e.g. the Public Lobby title) is NOT nested inside any ScrollRect —
-        // it's its own full-screen overlay — which is exactly why that one
-        // has always worked fine. So: reuse it here instead of an inline field.
+        // Custom URL — read-only display; edit via config file
         if (cur >= serverNames.Length - 1)
         {
             var urlRow = AddRow();
             AddLabel(urlRow, Get("vc.settings.url", "URL") + ":");
 
             string current = VoiceConfig.CustomServerURL ?? "";
-            string preview = string.IsNullOrEmpty(current) ? Get("vc.settings.urlNotSet", "(not set) tap to enter")
+            string display = string.IsNullOrEmpty(current) ? "(set in config)"
                 : (current.Length > 42 ? current[..39] + "..." : current);
 
-            var urlBtn = VCUiKit.CreateButton(urlRow, preview, Vector2.zero, new Vector2(380f, 44f),
-                new Color(0.10f, 0.13f, 0.20f, 1f), () =>
-                {
-                    VCTextInputPopup.Show(
-                        Get("vc.settings.url", "URL"),
-                        "https://...",
-                        VoiceConfig.CustomServerURL ?? "",
-                        200,
-                        text =>
-                        {
-                            var url = text?.Trim();
-                            if (string.IsNullOrEmpty(url)) return;
-                            VoiceConfig.CustomServerURL = url;
-                            VoiceRoom.RestartForCurrentGame();
-                            RebuildContent();
-                        });
-                }, F(18f));
-            var urt = (RectTransform)urlBtn.transform;
-            urt.anchorMin = urt.anchorMax = new Vector2(0.5f, 0.5f);
-            urt.anchoredPosition = new Vector2(-30f, 0f);
+            VCUiKit.CreateText(urlRow, "Txt", display, Vector2.zero,
+                new Vector2(380f, RowH - 12f), F(18f), new Color(0.72f, 0.77f, 0.88f, 1f),
+                FontStyles.Normal, TextAlignmentOptions.Left, true);
         }
     }
 
@@ -658,22 +638,9 @@ public class VoiceSettingsWindow : MonoBehaviour
 
         if (VoiceConfig.PublicLobbyEnabled)
         {
-            // Title
+            // Title — read-only display; edit via config file
             var titleRow = AddRow();
             AddLabel(titleRow, Get("vc.settings.title", "Title") + ":");
-            var edit = VCUiKit.CreateButton(titleRow, Get("vc.settings.edit", "Edit"),
-                Vector2.zero, new Vector2(90f, 44f), new Color(0.16f, 0.42f, 0.70f, 1f), () =>
-                {
-                    VCTextInputPopup.Show(Get("vc.settings.publicLobbyTitle", "Public Lobby Title"),
-                        "Among Us Lobby", VoiceConfig.PublicLobbyTitle, 40, v =>
-                        {
-                            VoiceConfig.PublicLobbyTitle = v;
-                            RebuildContent();
-                        });
-                }, F(19f));
-            var ert = (RectTransform)edit.transform;
-            ert.anchorMin = ert.anchorMax = new Vector2(1f, 0.5f);
-            ert.anchoredPosition = new Vector2(-40f, 0f);
 
             VCUiKit.CreateText(titleRow, "Txt", Truncate(VoiceConfig.PublicLobbyTitle, 26), Vector2.zero,
                 new Vector2(430f, RowH - 12f), F(19f), new Color(0.72f, 0.77f, 0.88f, 1f),

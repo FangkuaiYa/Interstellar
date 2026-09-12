@@ -1,88 +1,62 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
+using System.Net.Http;
 using System.Text.Json;
-using Il2CppInterop.Runtime.Attributes;
+using System.Threading.Tasks;
 using Interstellar.Voice;
 using UnityEngine;
-using UnityEngine.Networking;
 
 namespace Interstellar.Network;
 
 public static class RemoteServerList
 {
     private const string RemoteListUrl = "https://api.amongusclub.cn/Interstellar/ServerList.json";
-    private const float TimeoutSeconds = 6f;
-    private const float RefetchIntervalSeconds = 30f * 60f;
+    private const double RefetchIntervalSeconds = 30.0 * 60.0;
 
     private static readonly List<(string Name, string URL)> _cached = new();
     private static bool _fetchedOnce;
-    private static float _lastFetchTime = float.NegativeInfinity;
+    private static double _lastFetchTicks;
     private static bool _fetching;
-    private static FetchRunner? _runner;
+    private static readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(6) };
 
     public static IReadOnlyList<(string Name, string URL)>? Cached => _fetchedOnce && _cached.Count > 0 ? _cached : null;
 
-    public static void RefreshIfNeeded(MonoBehaviour host)
+    public static void RefreshIfNeeded(MonoBehaviour _)
     {
         if (_fetching) return;
-        if (_fetchedOnce && Time.unscaledTime - _lastFetchTime < RefetchIntervalSeconds) return;
-        if (host == null) return;
+        if (_fetchedOnce && (Time.realtimeSinceStartupAsDouble - _lastFetchTicks) < RefetchIntervalSeconds) return;
 
-        if (_runner == null)
+        _fetching = true;
+        Task.Run(async () =>
         {
-            var go = new GameObject("VC_FetchRunner");
-            UnityEngine.Object.DontDestroyOnLoad(go);
-            go.hideFlags = HideFlags.HideAndDontSave;
-            _runner = go.AddComponent<FetchRunner>();
-        }
-        _runner.StartFetch();
-    }
-
-    public class FetchRunner : MonoBehaviour
-    {
-        public FetchRunner(IntPtr ptr) : base(ptr) { }
-
-        public void StartFetch()
-        {
-            StartCoroutine(nameof(CoFetch));
-        }
-
-        [HideFromIl2Cpp]
-        private IEnumerator CoFetch()
-        {
-            _fetching = true;
-            var req = UnityWebRequest.Get(RemoteListUrl);
-            req.timeout = (int)TimeoutSeconds;
-            yield return req.SendWebRequest();
-
             try
             {
-                if (req.result != UnityWebRequest.Result.Success)
-                {
-                    InterstellarPlugin.Logger?.LogWarning($"[VC:RemoteServers] Fetch failed ({req.result}): {req.error}. Keeping existing list.");
-                    yield break;
-                }
-
-                var parsed = Parse(req.downloadHandler.text);
+                var json = await _http.GetStringAsync(RemoteListUrl);
+                var parsed = Parse(json);
                 if (parsed == null || parsed.Count == 0)
                 {
                     InterstellarPlugin.Logger?.LogWarning("[VC:RemoteServers] Fetched list had no valid entries. Keeping existing list.");
-                    yield break;
+                    return;
                 }
 
-                _cached.Clear();
-                _cached.AddRange(parsed);
+                lock (_cached)
+                {
+                    _cached.Clear();
+                    _cached.AddRange(parsed);
+                }
                 _fetchedOnce = true;
-                InterstellarPlugin.Logger?.LogInfo($"[VC:RemoteServers] Loaded {_cached.Count} server(s) from remote list.");
+                InterstellarPlugin.Logger?.LogInfo($"[VC:RemoteServers] Loaded {parsed.Count} server(s) from remote list.");
+            }
+            catch (Exception e)
+            {
+                InterstellarPlugin.Logger?.LogWarning($"[VC:RemoteServers] Fetch failed: {e.Message}. Keeping existing list.");
             }
             finally
             {
-                _lastFetchTime = Time.unscaledTime;
+                _lastFetchTicks = Time.realtimeSinceStartupAsDouble;
                 _fetching = false;
-                req.Dispose();
             }
-        }
+        });
     }
 
     private static List<(string Name, string URL)>? Parse(string json)

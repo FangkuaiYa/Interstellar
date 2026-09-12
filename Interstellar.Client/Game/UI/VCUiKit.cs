@@ -131,12 +131,12 @@ public static class VCUiKit
         var es = Object.FindObjectOfType<EventSystem>();
         if (es == null)
         {
-            var go = new GameObject("EventSystem");
-            go.transform.SetParent(EnsureCanvas().transform, false);
+            var go = new GameObject("InterstellarVC_EventSystem");
+            Object.DontDestroyOnLoad(go);
             es = go.AddComponent<EventSystem>();
             go.AddComponent<StandaloneInputModule>();
         }
-        else if (es.GetComponent<StandaloneInputModule>() == null)
+        else if (es.GetComponent<BaseInputModule>() == null)
         {
             es.gameObject.AddComponent<StandaloneInputModule>();
         }
@@ -252,7 +252,8 @@ public static class VCUiKit
         CreateText(rt, "Label", label, Vector2.zero, size, fontSize,
             textColor ?? Color.white, style, TextAlignmentOptions.Center);
 
-        btn.onClick.AddListener((Action)(() => onClick?.Invoke()));
+        Action handler = () => { try { onClick?.Invoke(); } catch { } };
+        btn.onClick.AddListener(handler);
         return btn;
     }
 
@@ -285,12 +286,17 @@ public static class VCUiKit
         }
 
         ApplyVisual(getter());
-        btn.onClick.AddListener((Action)(() =>
+        Action handler = () =>
         {
-            bool nv = !getter();
-            setter?.Invoke(nv);
-            ApplyVisual(getter());
-        }));
+            try
+            {
+                bool nv = !getter();
+                setter?.Invoke(nv);
+                ApplyVisual(getter());
+            }
+            catch { }
+        };
+        btn.onClick.AddListener(handler);
         return btn;
     }
 
@@ -378,19 +384,21 @@ public static class VCUiKit
         {
             var et = hit.gameObject.AddComponent<EventTrigger>();
             var down = new EventTrigger.Entry { eventID = EventTriggerType.PointerDown };
-            down.callback.AddListener((Action<BaseEventData>)(data =>
+            Action<BaseEventData> downHandler = data =>
             {
                 try
                 {
-                    var ped = data.TryCast<PointerEventData>();
+                    var ped = data as PointerEventData;
                     if (ped != null) ped.Use();
+                    ApplyFromMouse();
                 }
                 catch { }
-                ApplyFromMouse();
-            }));
+            };
+            down.callback.AddListener(downHandler);
             et.triggers.Add(down);
             var drag = new EventTrigger.Entry { eventID = EventTriggerType.Drag };
-            drag.callback.AddListener((Action<BaseEventData>)(_ => ApplyFromMouse()));
+            Action<BaseEventData> dragHandler = _ => { try { ApplyFromMouse(); } catch { } };
+            drag.callback.AddListener(dragHandler);
             et.triggers.Add(drag);
         }
 

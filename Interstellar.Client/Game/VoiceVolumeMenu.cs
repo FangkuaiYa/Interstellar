@@ -112,7 +112,8 @@ public static class VoiceVolumeMenu
         if (close)
         {
             close.OnClick = new ButtonClickedEvent();
-            close.OnClick.AddListener((Action)(() => _popUp!.SetActive(false)));
+            Action closeHandler = () => { try { _popUp!.SetActive(false); } catch { } };
+            close.OnClick.AddListener(closeHandler);
         }
 
         // Scroll arrows
@@ -265,18 +266,23 @@ public static class VoiceVolumeMenu
         SetVolLabel(currentVol);
         PositionSlider(currentVol);
 
-        pb.OnClick.AddListener((Action)(() =>
+        Action sliderHandler = () =>
         {
-            var cam = Camera.main;
-            if (!cam) return;
-            var mWorld = cam.ScreenToWorldPoint(Input.mousePosition);
-            var mLocal = trackGO.transform.InverseTransformPoint(mWorld);
-            float t = Mathf.InverseLerp(-SliderW * 0.5f, SliderW * 0.5f, mLocal.x);
-            float v = Mathf.Clamp((float)Math.Round(Mathf.Lerp(VMin, VMax, t), 2), VMin, VMax);
-            ApplyVolume(entry, v);
-            PositionSlider(v);
-            SetVolLabel(v);
-        }));
+            try
+            {
+                var cam = Camera.main;
+                if (!cam) return;
+                var mWorld = cam.ScreenToWorldPoint(Input.mousePosition);
+                var mLocal = trackGO.transform.InverseTransformPoint(mWorld);
+                float t = Mathf.InverseLerp(-SliderW * 0.5f, SliderW * 0.5f, mLocal.x);
+                float v = Mathf.Clamp((float)Math.Round(Mathf.Lerp(VMin, VMax, t), 2), VMin, VMax);
+                ApplyVolume(entry, v);
+                PositionSlider(v);
+                SetVolLabel(v);
+            }
+            catch { }
+        };
+        pb.OnClick.AddListener(sliderHandler);
 
         var upd = trackGO.AddComponent<PlayerSliderDragUpdater>();
         upd.Init(trackGO, SliderW, VMin, VMax, v =>
@@ -371,7 +377,8 @@ public static class VoiceVolumeMenu
             sr.size = new Vector2(0.5f, 0.4f);
         var pb = btn.GetComponent<PassiveButton>();
         pb.OnClick = new ButtonClickedEvent();
-        pb.OnClick.AddListener((Action)(() => onClick()));
+        Action clickHandler = () => { try { onClick(); } catch { } };
+        pb.OnClick.AddListener(clickHandler);
     }
 
     private static Sprite Create1x1Sprite(Color32 c)

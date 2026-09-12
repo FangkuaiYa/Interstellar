@@ -88,11 +88,16 @@ public static class VoiceButtons
             setActive = toggleSetButtonObject.transform.Find("Active").GetComponent<SpriteRenderer>();
             toggleSetButton = toggleSetButtonObject.GetComponent<PassiveButton>();
             toggleSetButton.OnClick.RemoveAllListeners();
-            toggleSetButton.OnClick.AddListener((Action)(() =>
+            Action settingsHandler = () =>
             {
-                var w = VoiceSettingsWindow.Instance;
-                if (w != null) { if (!w.ShowWindow) w.Open(); else w.Close(); }
-            }));
+                try
+                {
+                    var w = VoiceSettingsWindow.Instance;
+                    if (w != null) { if (!w.ShowWindow) w.Open(); else w.Close(); }
+                }
+                catch { }
+            };
+            toggleSetButton.OnClick.AddListener(settingsHandler);
             setInactive.sprite = LoadSprite("Interstellar.Resources.Settings_Button.png", 100f);
             setActive.sprite = LoadSprite("Interstellar.Resources.Settings_ButtonActive.png", 100f);
         }

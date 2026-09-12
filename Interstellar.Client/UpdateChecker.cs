@@ -116,20 +116,25 @@ internal static class UpdateChecker
 
         if (IsAndroid)
         {
-            yesT.GetComponent<PassiveButton>().OnClick.AddListener((Action)(() =>
-                Application.OpenURL(asset.DownloadUrl)));
+            Action androidHandler = () => { try { Application.OpenURL(asset.DownloadUrl); } catch { } };
+            yesT.GetComponent<PassiveButton>().OnClick.AddListener(androidHandler);
         }
         else
         {
-            yesT.GetComponent<PassiveButton>().OnClick.AddListener((Action)(() =>
+            Action desktopHandler = () =>
             {
-                popup.gameObject.SetActive(false);
-                if (_host != null) _host.StartCoroutine(CoDownload(urls));
-            }));
+                try
+                {
+                    popup.gameObject.SetActive(false);
+                    if (_host != null) _host.StartCoroutine(CoDownload(urls));
+                }
+                catch { }
+            };
+            yesT.GetComponent<PassiveButton>().OnClick.AddListener(desktopHandler);
         }
 
-        noT.GetComponent<PassiveButton>().OnClick.AddListener((Action)(() =>
-            popup.gameObject.SetActive(false)));
+        Action noHandler = () => { try { popup.gameObject.SetActive(false); } catch { } };
+        noT.GetComponent<PassiveButton>().OnClick.AddListener(noHandler);
 
         popup.Show(msg);
     }
