@@ -106,20 +106,20 @@ internal sealed class AudioPreprocessor
             if (!IsSpeech)
             {
                 float r = MathF.Min(_env / speechThresh, 1f);
-                float r2 = r * r;
-                target = 0.08f + 0.92f * r2;
+                float r3 = r * r * r;
+                target = 0.03f + 0.97f * r3;
             }
             else if (_env < speechThresh)
             {
                 float r = _env / speechThresh;
-                target = 0.60f + 0.40f * r;
+                target = 0.55f + 0.45f * r;
             }
         }
 
-        if (echoCancellation && farEndLevel > 0.01f)
+        if (echoCancellation && farEndLevel > 0.006f)
         {
-            float dominance = farEndLevel / (farEndLevel + _env + 1e-6f);
-            float echoTarget = 1f - dominance * 0.92f;
+            float dominance = farEndLevel / (farEndLevel + _env * 0.85f + 1e-6f);
+            float echoTarget = 1f - dominance * 0.97f;
             target = MathF.Min(target, echoTarget);
         }
 

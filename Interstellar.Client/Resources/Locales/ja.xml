@@ -3,13 +3,7 @@
   <string name="vc.settings.server">サーバー</string>
   <string name="vc.settings.refresh">更新</string>
   <string name="vc.settings.url">URL</string>
-  <string name="vc.settings.empty">(空)</string>
   <string name="vc.settings.edit">編集</string>
-  <string name="vc.settings.customUrl">カスタムサーバーURL</string>
-  <string name="vc.settings.reconnect">再接続</string>
-  <string name="vc.settings.natFixOn">NAT修正 (リレー強制)</string>
-  <string name="vc.settings.natFixOff">NAT修正 (北京サーバーでは利用不可)</string>
-  <string name="vc.settings.natFixWarn">北京サーバーはNAT修正をサポートしていません。</string>
   <string name="vc.settings.publicLobby">公開ロビー</string>
   <string name="vc.settings.publicLobbyEnable">公開ロビーを有効化</string>
   <string name="vc.settings.publicLobbyTitle">公開ロビータイトル</string>
@@ -38,24 +32,9 @@
   <string name="vc.settings.onlyMeetingOrLobby">会議/ロビーのみ会話可能</string>
   <string name="vc.settings.defaultDevice">デフォルト</string>
   <string name="vc.settings.noDeviceSupport">このプラットフォームではデバイス選択はサポートされていません。</string>
-  <string name="vc.settings.btnVC">VC</string>
   <string name="vc.settings.onlyHearInSight">視界内のみ聞こえる</string>
   <string name="vc.settings.playerVolume">プレイヤー音量</string>
-  <string name="vc.hud.microphone">マイク</string>
-  <string name="vc.hud.speaker">スピーカー</string>
-  <string name="vc.hud.status">ステータス</string>
-  <string name="vc.hud.channel">チャンネル</string>
-  <string name="vc.hud.volume">音量</string>
-  <string name="vc.hud.hotkey">ホットキー</string>
-  <string name="vc.hud.active">通話中</string>
-  <string name="vc.hud.muted">ミュート</string>
-  <string name="vc.hud.all">全体</string>
-  <string name="vc.hud.impostors">インポスター</string>
-  <string name="vc.hud.impostorRadio">インポスター無線</string>
-  <string name="vc.hud.impostorChannel">インポスターチャンネル</string>
   <string name="vc.popup.capacityTitle">サーバー満員</string>
-  <string name="vc.popup.switchServer">サーバー切替</string>
-  <string name="vc.popup.ok">OK</string>
   <string name="vc.popup.voiceServer">ボイスチャットサーバー</string>
   <string name="vc.popup.optimalPlayers">最適容量</string>
   <string name="vc.popup.currentPlayers">現在のオンライン</string>
@@ -97,4 +76,5 @@
   <string name="vc.playerVolume.noPlayers">他のプレイヤーがまだ接続されていません。</string>
   <string name="vc.common.on">オン</string>
   <string name="vc.common.off">オフ</string>
+  <string name="vc.player.auto">自動</string>
 </resources>

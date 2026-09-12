@@ -3,13 +3,7 @@
   <string name="vc.settings.server">서버</string>
   <string name="vc.settings.refresh">새로고침</string>
   <string name="vc.settings.url">URL</string>
-  <string name="vc.settings.empty">(비어 있음)</string>
   <string name="vc.settings.edit">편집</string>
-  <string name="vc.settings.customUrl">서버 URL 사용자 지정</string>
-  <string name="vc.settings.reconnect">재연결</string>
-  <string name="vc.settings.natFixOn">NAT 수정 (중계 강제)</string>
-  <string name="vc.settings.natFixOff">NAT 수정 (베이징 서버에서 사용 불가)</string>
-  <string name="vc.settings.natFixWarn">베이징 서버는 NAT 수정을 지원하지 않습니다.</string>
   <string name="vc.settings.publicLobby">공개 로비</string>
   <string name="vc.settings.publicLobbyEnable">공개 로비 활성화</string>
   <string name="vc.settings.publicLobbyTitle">공개 로비 제목</string>
@@ -38,24 +32,9 @@
   <string name="vc.settings.onlyMeetingOrLobby">회의/로비에서만 대화 가능</string>
   <string name="vc.settings.defaultDevice">기본값</string>
   <string name="vc.settings.noDeviceSupport">이 플랫폼에서는 기기 선택이 지원되지 않습니다.</string>
-  <string name="vc.settings.btnVC">VC</string>
   <string name="vc.settings.onlyHearInSight">시야 내에서만 들림</string>
   <string name="vc.settings.playerVolume">플레이어 볼륨</string>
-  <string name="vc.hud.microphone">마이크</string>
-  <string name="vc.hud.speaker">스피커</string>
-  <string name="vc.hud.status">상태</string>
-  <string name="vc.hud.channel">채널</string>
-  <string name="vc.hud.volume">볼륨</string>
-  <string name="vc.hud.hotkey">단축키</string>
-  <string name="vc.hud.active">통화 중</string>
-  <string name="vc.hud.muted">음소거</string>
-  <string name="vc.hud.all">전체</string>
-  <string name="vc.hud.impostors">임포스터</string>
-  <string name="vc.hud.impostorRadio">임포스터 무전</string>
-  <string name="vc.hud.impostorChannel">임포스터 채널</string>
   <string name="vc.popup.capacityTitle">서버가 가득 참</string>
-  <string name="vc.popup.switchServer">서버 변경</string>
-  <string name="vc.popup.ok">확인</string>
   <string name="vc.popup.voiceServer">음성 채팅 서버</string>
   <string name="vc.popup.optimalPlayers">최적 수용 인원</string>
   <string name="vc.popup.currentPlayers">현재 접속자</string>
@@ -97,4 +76,5 @@
   <string name="vc.playerVolume.noPlayers">다른 플레이어가 아직 연결되지 않았습니다.</string>
   <string name="vc.common.on">켜짐</string>
   <string name="vc.common.off">꺼짐</string>
+  <string name="vc.player.auto">자동</string>
 </resources>

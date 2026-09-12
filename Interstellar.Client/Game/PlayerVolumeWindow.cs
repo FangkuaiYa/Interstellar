@@ -289,7 +289,7 @@ public class PlayerVolumeWindow : MonoBehaviour
         string displayName = "...";
         if (p.IsMapped)
         {
-            foreach (var pc in PlayerControl.AllPlayerControls.ToArray())
+            foreach (var pc in PlayerControl.AllPlayerControls)
             {
                 if (pc != null && pc.PlayerId == p.PlayerId)
                 {
@@ -307,6 +307,9 @@ public class PlayerVolumeWindow : MonoBehaviour
             new Vector2(-ContentW / 2f + 170f, 0f), new Vector2(250f, RowH - 12f),
             F(21f), Color.white, FontStyles.Bold, TextAlignmentOptions.Left, true);
 
+        string pname = p.PlayerName;
+        bool isAuto = VoiceConfig.GetPlayerAutoVolume(pname);
+
         var valueTmp = VCUiKit.CreateText(row, "Value", $"{p.Volume * 100f:F0}%", Vector2.zero,
             new Vector2(70f, RowH - 12f), F(20f), new Color(1f, 0.86f, 0.55f, 1f),
             FontStyles.Bold, TextAlignmentOptions.Right);
@@ -314,16 +317,24 @@ public class PlayerVolumeWindow : MonoBehaviour
         vrt.anchorMin = vrt.anchorMax = new Vector2(1f, 0.5f);
         vrt.anchoredPosition = new Vector2(-40f, 0f);
 
-        float sliderW = 240f;
-        byte pid = p.PlayerId;
-        string pname = p.PlayerName;
-        VCUiKit.CreateSlider(row, new Vector2(ContentRight - 40f - 70f - 20f - sliderW / 2f, 0f),
+        float autoW = 76f;
+        VCUiKit.CreateToggle(row, TranslationHelper.Get("vc.player.auto", "Auto"),
+            new Vector2(ContentRight - 40f - autoW / 2f, 0f), new Vector2(autoW, 40f),
+            () => VoiceConfig.GetPlayerAutoVolume(pname),
+            v =>
+            {
+                VoiceConfig.SetPlayerAutoVolume(pname, v);
+                RebuildContent(); // re-render this row so the slider lock state updates
+            }, 16f);
+
+        float sliderW = 200f;
+        VCUiKit.CreateSlider(row, new Vector2(ContentRight - 40f - autoW - 20f - 70f - 20f - sliderW / 2f, 0f),
             new Vector2(sliderW, 44f), 0f, 2f, p.Volume,
             v =>
             {
                 p.SetVolume(v);
                 VoiceConfig.SetPlayerVolume(pname, v);
                 valueTmp.text = $"{v * 100f:F0}%";
-            }, 10f, true);
+            }, 10f, !isAuto);
     }
 }

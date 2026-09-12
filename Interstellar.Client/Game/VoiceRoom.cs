@@ -21,6 +21,9 @@ public class VoiceRoom
     private readonly Dictionary<int, VCPlayer> _clients = new();
     public IEnumerable<VCPlayer> AllClients => _clients.Values;
 
+    private readonly List<VCPlayer> _clientsSnapshotBuf = new();
+    private readonly List<SpeakerCache> _speakerCacheBuf = new();
+
     private readonly List<IVoiceComponent> _virtualMics = new();
     private readonly List<IVoiceComponent> _virtualSpeakers = new();
     public void AddVirtualMicrophone(IVoiceComponent c) => _virtualMics.Add(c);
@@ -111,6 +114,7 @@ public class VoiceRoom
                         _clientVolume.GetProperty(instance).Volume = 1f;
                         _normalVolume.GetProperty(instance).Volume = 0f;
                         _localMicMeter = _levelMeter.GetProperty(instance);
+                        // InterstellarPlugin.Logger.LogInfo("[VC] Local client connected.");
                     }
                     else
                     {
@@ -293,7 +297,8 @@ public class VoiceRoom
             }
         }
 
-        List<SpeakerCache> speakerCache = new();
+        List<SpeakerCache> speakerCache = _speakerCacheBuf;
+        speakerCache.Clear();
         if (listenerPos.HasValue)
         {
             float maxRange = VoiceConfig.SyncedRoomSettings.MaxChatDistance;
@@ -309,9 +314,18 @@ public class VoiceRoom
         bool inMeeting = MeetingHud.Instance != null || ExileController.Instance != null;
         bool inGame = ShipStatus.Instance != null;
 
-        // Copy to avoid collection-modified-during-enumeration from audio callback thread
-        var clients = _clients.Values.ToArray();
-        foreach (var client in clients)
+        _clientsSnapshotBuf.Clear();
+        try
+        {
+            foreach (var v in _clients.Values) _clientsSnapshotBuf.Add(v);
+        }
+        catch (InvalidOperationException)
+        {
+            _clientsSnapshotBuf.Clear();
+            _clientsSnapshotBuf.AddRange(_clients.Values.ToArray());
+        }
+
+        foreach (var client in _clientsSnapshotBuf)
         {
             if (inLobby || !inGame)
                 client.UpdateLobby();

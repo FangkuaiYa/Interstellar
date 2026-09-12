@@ -78,11 +78,35 @@ public class VCPlayer
         if (_mappedPlayer != null && _mappedPlayer && _mappedPlayer.PlayerId == _playerId) return;
         _mappedPlayer = null;
         if (_playerId == byte.MaxValue) return;
-        foreach (var p in PlayerControl.AllPlayerControls.ToArray())
-            if (p.PlayerId == _playerId) { _mappedPlayer = p; break; }
+        foreach (var p in PlayerControl.AllPlayerControls)
+            if (p != null && p.PlayerId == _playerId) { _mappedPlayer = p; break; }
     }
 
-    public void SetVolume(float v) => _clientVolume.Volume = v;
+    public void SetVolume(float v)
+    {
+        if (VoiceConfig.GetPlayerAutoVolume(_playerName)) return;
+        _clientVolume.Volume = v;
+    }
+
+    private float _autoVolume = 1f;
+    private const float AutoVolumeTargetLevel = 0.25f;
+    private const float AutoVolumeMin = 0.15f;
+    private const float AutoVolumeMax = 2f;
+
+    private void ApplyAutoVolume()
+    {
+        if (string.IsNullOrEmpty(_playerName) || !VoiceConfig.GetPlayerAutoVolume(_playerName))
+            return;
+
+        float level = _levelMeter.Level;
+        if (level > 0.002f)
+        {
+            float desired = Math.Clamp(AutoVolumeTargetLevel / level, AutoVolumeMin, AutoVolumeMax);
+            float k = desired > _autoVolume ? 0.05f : 0.02f;
+            _autoVolume += (desired - _autoVolume) * k;
+        }
+        _clientVolume.Volume = _autoVolume;
+    }
 
     private void MuteAll()
     {
@@ -93,6 +117,7 @@ public class VCPlayer
 
     public void UpdateLobby()
     {
+        ApplyAutoVolume();
         CheckMapping();
         _imager.Pan = 0f;
         _normalVolume.Volume = 1f;
@@ -102,6 +127,7 @@ public class VCPlayer
 
     public void UpdateMeeting()
     {
+        ApplyAutoVolume();
         CheckMapping();
         if (!IsMapped) { MuteAll(); return; }
 
@@ -185,6 +211,7 @@ public class VCPlayer
         bool localInVent,
         bool commsSabActive)
     {
+        ApplyAutoVolume();
         CheckMapping();
         if (!IsMapped || !listenerPos.HasValue) { MuteAll(); return; }
 

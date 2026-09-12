@@ -56,7 +56,7 @@ public class InterstellarPlugin : BasePlugin
         ClassInjector.RegisterTypeInIl2Cpp<VoiceSettingsWindow>();
         ClassInjector.RegisterTypeInIl2Cpp<PublicLobbyWindow>();
         ClassInjector.RegisterTypeInIl2Cpp<PlayerVolumeWindow>();
-        ClassInjector.RegisterTypeInIl2Cpp<VCTextField>();
+        ClassInjector.RegisterTypeInIl2Cpp<VCInputFeeder>();
 
         var settingsWindow = this.AddComponent<VoiceSettingsWindow>();
         var lobbyWindow = this.AddComponent<PublicLobbyWindow>();

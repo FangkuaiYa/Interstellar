@@ -4,12 +4,18 @@ using UnityEngine;
 
 namespace Interstellar.Voice;
 
+/// <summary>
+/// BCL-compatible voice chat configuration.
+/// Settings structure mirrors the BetterCrewLink independent client.
+/// </summary>
 public static class VoiceConfig
 {
     public static VoiceRoomSettings SyncedRoomSettings { get; } = new();
 
+    /// <summary>Fired when synced room settings change (received from host via voice server).</summary>
     public static Action<VoiceRoomSettings>? OnSyncedSettingsChanged;
 
+    // ── Server ────────────────────────────────────────────
     public static int SelectedServerIndex
     {
         get => _serverIndex?.Value ?? 0;
@@ -38,9 +44,11 @@ public static class VoiceConfig
         return url.Length > 25 ? url[..25] + "..." : url;
     }
 
+    // ── Audio devices ──────────────────────────────────────
     public static string MicrophoneDevice => _mic?.Value ?? "";
     public static string SpeakerDevice => _speaker?.Value ?? "";
 
+    // ── Volume ─────────────────────────────────────────────
     public static float MasterVolume
     {
         get => Math.Clamp(_masterVol?.Value ?? 1f, 0.1f, 3f);
@@ -52,6 +60,7 @@ public static class VoiceConfig
         set { if (_micVol != null) _micVol.Value = value; }
     }
 
+    // ── Audio processing ───────────────────────────────────
     public static bool NoiseSuppression
     {
         get => _noiseSuppression?.Value ?? true;
@@ -63,12 +72,14 @@ public static class VoiceConfig
         set { if (_echoCancellation != null) _echoCancellation.Value = value; }
     }
 
+    // ── VAD ────────────────────────────────────────────────
     public static bool VADEnabled
     {
         get => _vadEnabled?.Value ?? true;
         set { if (_vadEnabled != null) _vadEnabled.Value = value; }
     }
 
+    // ── Host room settings (synced via server when host) ───
     public static float HostMaxChatDistance
     {
         get => Math.Clamp(_hostMaxDist?.Value ?? 6f, 1.5f, 20f);
@@ -130,6 +141,7 @@ public static class VoiceConfig
         set { if (_hostMeetingOnly != null) _hostMeetingOnly.Value = value; }
     }
 
+    // ── Public lobby ───────────────────────────────────────
     public static bool PublicLobbyEnabled
     {
         get => _publicLobby?.Value ?? false;
@@ -146,6 +158,9 @@ public static class VoiceConfig
         set { if (_publicLang != null) _publicLang.Value = value; }
     }
 
+    // ── Per-player volume (0%-200%, remembered by player name) ─
+    // In-memory cache is the source of truth during play; mirrored to a
+    // single serialized config entry so it survives between sessions.
     public static readonly Dictionary<string, float> PlayerVolumes = new();
 
     public static float GetPlayerVolume(string playerName)
@@ -192,6 +207,46 @@ public static class VoiceConfig
         }
     }
 
+    // ── Per-player "auto volume" toggle (remembered by player name) ─
+    // When enabled for a player, VCPlayer auto-levels that player's output
+    // volume every frame instead of using the fixed PlayerVolumes value,
+    // and the slider in PlayerVolumeWindow is shown as non-interactive.
+    public static readonly HashSet<string> PlayerAutoVolume = new();
+
+    public static bool GetPlayerAutoVolume(string playerName)
+        => !string.IsNullOrEmpty(playerName) && PlayerAutoVolume.Contains(playerName);
+
+    public static void SetPlayerAutoVolume(string playerName, bool auto)
+    {
+        if (string.IsNullOrEmpty(playerName)) return;
+        if (auto) PlayerAutoVolume.Add(playerName);
+        else PlayerAutoVolume.Remove(playerName);
+        SavePlayerAutoVolume();
+    }
+
+    private static void SavePlayerAutoVolume()
+    {
+        if (_savedPlayerAutoVolume == null) return;
+        var sb = new System.Text.StringBuilder();
+        foreach (var name in PlayerAutoVolume)
+        {
+            if (string.IsNullOrEmpty(name)) continue;
+            if (sb.Length > 0) sb.Append(';');
+            sb.Append(name.Replace(';', '_').Replace('=', '_'));
+        }
+        _savedPlayerAutoVolume.Value = sb.ToString();
+    }
+
+    private static void LoadPlayerAutoVolume()
+    {
+        PlayerAutoVolume.Clear();
+        var raw = _savedPlayerAutoVolume?.Value ?? "";
+        if (string.IsNullOrEmpty(raw)) return;
+        foreach (var part in raw.Split(';'))
+            if (!string.IsNullOrEmpty(part)) PlayerAutoVolume.Add(part);
+    }
+
+    // ── Device caches ──────────────────────────────────────
     public static List<string> MicrophoneDevices { get; } = new();
     public static List<string> SpeakerDevices { get; } = new();
     public static bool DeviceSelectionSupported =>
@@ -210,6 +265,7 @@ public static class VoiceConfig
     private static ConfigEntry<bool>? _publicLobby;
     private static ConfigEntry<string>? _publicTitle, _publicLang;
     private static ConfigEntry<string>? _savedPlayerVolumes;
+    private static ConfigEntry<string>? _savedPlayerAutoVolume;
 
     private static bool _devicesCached;
 
@@ -285,6 +341,9 @@ public static class VoiceConfig
         _publicTitle = cfg.Bind("VoiceChat.Room", "PublicTitle", "Among Us Lobby");
         _publicLang = cfg.Bind("VoiceChat.Room", "PublicLanguage", "en");
 
+        _savedPlayerAutoVolume = cfg.Bind("VoiceChat", "PlayerAutoVolume", "",
+            "Semicolon-separated list of player names with auto-volume enabled.");
+        LoadPlayerAutoVolume();
         _savedPlayerVolumes = cfg.Bind("VoiceChat", "PlayerVolumes", "",
             "Per-player volume overrides (0%-200%), remembered by player name. Internal serialized format.");
         LoadPlayerVolumes();
@@ -328,16 +387,27 @@ public static class VoiceConfig
     }
 }
 
+/// <summary>
+/// BCL server list — mirrors the server options available in BetterCrewLink.
+/// </summary>
 public static class ServerList
 {
+    private static readonly (string Name, string URL)[] BuiltInDefaults =
+    {
+        ("BetterCrewLink Official", "https://bettercrewl.ink"),
+        ("China,Beijing (AmongUsClub)", "https://bcl.server.amongusclub.cn"),
+        ("North America (AmongUsClub)", "https://bcl-na.server.amongusclub.cn"),
+    };
+
+    /// <summary>
+    /// Returns the remotely-fetched server list (see Network.RemoteServerList)
+    /// when one is available, otherwise the built-in defaults above. Call
+    /// Network.RemoteServerList.RefreshIfNeeded(...) periodically (e.g. on
+    /// settings-window open) to keep this up to date without a client update.
+    /// </summary>
     public static IReadOnlyList<(string Name, string URL)> GetServers()
     {
-        return new[]
-        {
-            ("BetterCrewLink Official", "https://bettercrewl.ink"),
-            ("China,Beijing (AmongUsClub)", "https://bcl.server.amongusclub.cn"),
-            ("North America (AmongUsClub)", "https://bcl-na.server.amongusclub.cn"),
-        };
+        return Interstellar.Network.RemoteServerList.Cached ?? BuiltInDefaults;
     }
 
     public static string[] GetServerNames()

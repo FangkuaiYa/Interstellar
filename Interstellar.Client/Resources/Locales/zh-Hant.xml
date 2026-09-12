@@ -3,13 +3,7 @@
   <string name="vc.settings.server">伺服器</string>
   <string name="vc.settings.refresh">刷新</string>
   <string name="vc.settings.url">地址</string>
-  <string name="vc.settings.empty">(空)</string>
   <string name="vc.settings.edit">編輯</string>
-  <string name="vc.settings.customUrl">自訂伺服器地址</string>
-  <string name="vc.settings.reconnect">重新連線</string>
-  <string name="vc.settings.natFixOn">NAT修復 (強制中繼)</string>
-  <string name="vc.settings.natFixOff">NAT修復 (北京伺服器不可用)</string>
-  <string name="vc.settings.natFixWarn">北京伺服器不支援NAT修復。</string>
   <string name="vc.settings.publicLobby">公開大廳</string>
   <string name="vc.settings.publicLobbyEnable">啟用公開大廳</string>
   <string name="vc.settings.publicLobbyTitle">公開大廳標題</string>
@@ -38,24 +32,9 @@
   <string name="vc.settings.onlyMeetingOrLobby">僅會議與大廳可聊天</string>
   <string name="vc.settings.defaultDevice">系統預設</string>
   <string name="vc.settings.noDeviceSupport">當前平台不支援切換音頻設備。</string>
-  <string name="vc.settings.btnVC">語音</string>
   <string name="vc.settings.onlyHearInSight">僅視線範圍內可聽</string>
   <string name="vc.settings.playerVolume">玩家音量</string>
-  <string name="vc.hud.microphone">麥克風</string>
-  <string name="vc.hud.speaker">揚聲器</string>
-  <string name="vc.hud.status">狀態</string>
-  <string name="vc.hud.channel">頻道</string>
-  <string name="vc.hud.volume">音量</string>
-  <string name="vc.hud.hotkey">快捷鍵</string>
-  <string name="vc.hud.active">講話中</string>
-  <string name="vc.hud.muted">已靜音</string>
-  <string name="vc.hud.all">全體</string>
-  <string name="vc.hud.impostors">內鬼</string>
-  <string name="vc.hud.impostorRadio">內鬼私密通話</string>
-  <string name="vc.hud.impostorChannel">內鬼頻道</string>
   <string name="vc.popup.capacityTitle">語音伺服器已滿</string>
-  <string name="vc.popup.switchServer">切換伺服器</string>
-  <string name="vc.popup.ok">確定</string>
   <string name="vc.popup.voiceServer">語音聊天伺服器</string>
   <string name="vc.popup.optimalPlayers">最佳承載人數</string>
   <string name="vc.popup.currentPlayers">當前在線人數</string>
@@ -97,4 +76,5 @@
   <string name="vc.playerVolume.noPlayers">暫無其他玩家連接。</string>
   <string name="vc.common.on">開</string>
   <string name="vc.common.off">關</string>
+  <string name="vc.player.auto">自動</string>
 </resources>

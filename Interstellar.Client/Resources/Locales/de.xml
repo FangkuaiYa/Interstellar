@@ -3,13 +3,7 @@
   <string name="vc.settings.server">Server</string>
   <string name="vc.settings.refresh">Aktualisieren</string>
   <string name="vc.settings.url">URL</string>
-  <string name="vc.settings.empty">(leer)</string>
   <string name="vc.settings.edit">Bearbeiten</string>
-  <string name="vc.settings.customUrl">Benutzerdefinierte Server-URL</string>
-  <string name="vc.settings.reconnect">Neu verbinden</string>
-  <string name="vc.settings.natFixOn">NAT-Fix (Relay erzwingen)</string>
-  <string name="vc.settings.natFixOff">NAT-Fix (nicht verfügbar auf Beijing-Server)</string>
-  <string name="vc.settings.natFixWarn">Beijing-Server unterstützt kein NAT-Fix.</string>
   <string name="vc.settings.publicLobby">Öffentliche Lobby</string>
   <string name="vc.settings.publicLobbyEnable">Öffentliche Lobby aktivieren</string>
   <string name="vc.settings.publicLobbyTitle">Öffentlicher Lobby-Titel</string>
@@ -38,24 +32,9 @@
   <string name="vc.settings.onlyMeetingOrLobby">Nur Meeting/Lobby Chat</string>
   <string name="vc.settings.defaultDevice">Standard</string>
   <string name="vc.settings.noDeviceSupport">Geräteauswahl wird auf dieser Plattform nicht unterstützt.</string>
-  <string name="vc.settings.btnVC">VC</string>
   <string name="vc.settings.onlyHearInSight">Nur in Sichtweite hören</string>
   <string name="vc.settings.playerVolume">Spieler-Lautstärke</string>
-  <string name="vc.hud.microphone">Mikrofon</string>
-  <string name="vc.hud.speaker">Lautsprecher</string>
-  <string name="vc.hud.status">Status</string>
-  <string name="vc.hud.channel">Kanal</string>
-  <string name="vc.hud.volume">Lautstärke</string>
-  <string name="vc.hud.hotkey">Tastenkürzel</string>
-  <string name="vc.hud.active">Aktiv</string>
-  <string name="vc.hud.muted">Stumm</string>
-  <string name="vc.hud.all">Alle</string>
-  <string name="vc.hud.impostors">Impostoren</string>
-  <string name="vc.hud.impostorRadio">Impostor Funk</string>
-  <string name="vc.hud.impostorChannel">Impostor-Kanal</string>
   <string name="vc.popup.capacityTitle">Server voll</string>
-  <string name="vc.popup.switchServer">Server wechseln</string>
-  <string name="vc.popup.ok">OK</string>
   <string name="vc.popup.voiceServer">Voice-Chat-Server</string>
   <string name="vc.popup.optimalPlayers">Optimale Kapazität</string>
   <string name="vc.popup.currentPlayers">Aktuell online</string>
@@ -97,4 +76,5 @@
   <string name="vc.playerVolume.noPlayers">Noch keine anderen Spieler verbunden.</string>
   <string name="vc.common.on">AN</string>
   <string name="vc.common.off">AUS</string>
+  <string name="vc.player.auto">Auto</string>
 </resources>

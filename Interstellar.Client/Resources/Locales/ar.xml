@@ -3,13 +3,7 @@
   <string name="vc.settings.server">الخادم</string>
   <string name="vc.settings.refresh">تحديث</string>
   <string name="vc.settings.url">الرابط</string>
-  <string name="vc.settings.empty">(فارغ)</string>
   <string name="vc.settings.edit">تعديل</string>
-  <string name="vc.settings.customUrl">رابط خادم مخصص</string>
-  <string name="vc.settings.reconnect">إعادة الاتصال</string>
-  <string name="vc.settings.natFixOn">إصلاح NAT (ترحيل إجباري)</string>
-  <string name="vc.settings.natFixOff">إصلاح NAT (غير متاح على خادم بكين)</string>
-  <string name="vc.settings.natFixWarn">خادم بكين لا دعم إصلاح NAT.</string>
   <string name="vc.settings.publicLobby">الردهة العامة</string>
   <string name="vc.settings.publicLobbyEnable">تفعيل الردهة العامة</string>
   <string name="vc.settings.publicLobbyTitle">عنوان الردهة العامة</string>
@@ -38,24 +32,9 @@
   <string name="vc.settings.onlyMeetingOrLobby">المحادثة فقط في الاجتماع/الردهة</string>
   <string name="vc.settings.defaultDevice">افتراضي</string>
   <string name="vc.settings.noDeviceSupport">اختيار الجهاز غير مدعوم على هذه المنصة.</string>
-  <string name="vc.settings.btnVC">VC</string>
   <string name="vc.settings.onlyHearInSight">السمع فقط في مجال الرؤية</string>
   <string name="vc.settings.playerVolume">صوت اللاعب</string>
-  <string name="vc.hud.microphone">ميكروفون</string>
-  <string name="vc.hud.speaker">سماعة</string>
-  <string name="vc.hud.status">الحالة</string>
-  <string name="vc.hud.channel">القناة</string>
-  <string name="vc.hud.volume">الصوت</string>
-  <string name="vc.hud.hotkey">مفتاح الاختصار</string>
-  <string name="vc.hud.active">نشط</string>
-  <string name="vc.hud.muted">مكتوم</string>
-  <string name="vc.hud.all">الكل</string>
-  <string name="vc.hud.impostors">المحتالون</string>
-  <string name="vc.hud.impostorRadio">راديو المحتال</string>
-  <string name="vc.hud.impostorChannel">قناة المحتال</string>
   <string name="vc.popup.capacityTitle">الخادم ممتلئ</string>
-  <string name="vc.popup.switchServer">تغيير الخادم</string>
-  <string name="vc.popup.ok">موافق</string>
   <string name="vc.popup.voiceServer">خادم المحادثة الصوتية</string>
   <string name="vc.popup.optimalPlayers">السعة المثلى</string>
   <string name="vc.popup.currentPlayers">المتصلون حالياً</string>
@@ -97,4 +76,5 @@
   <string name="vc.playerVolume.noPlayers">لا يوجد لاعبون آخرون متصلون بعد.</string>
   <string name="vc.common.on">تشغيل</string>
   <string name="vc.common.off">إيقاف</string>
+  <string name="vc.player.auto">تلقائي</string>
 </resources>
