@@ -53,13 +53,7 @@ internal static class UpdateChecker
     {
         if (IsChinese())
         {
-            InterstellarPlugin.Logger?.LogInfo("[Update] Chinese locale detected, fetching mirrors...");
             yield return CoFetchMirrors();
-            InterstellarPlugin.Logger?.LogInfo($"[Update] Got {_mirrorUrls.Count} mirror URLs.");
-        }
-        else
-        {
-            InterstellarPlugin.Logger?.LogInfo("[Update] Non-Chinese locale, skipping mirrors.");
         }
 
         var www = UnityWebRequest.Get(GitHubApiUrl);
@@ -91,7 +85,6 @@ internal static class UpdateChecker
         var urls = new List<string>();
         foreach (var m in _mirrorUrls) urls.Add(m + asset.DownloadUrl);
         urls.Add(asset.DownloadUrl);
-        InterstellarPlugin.Logger?.LogInfo($"[Update] Download URLs: {string.Join(" | ", urls)}");
 
         // Popup text
         var title = TranslationHelper.Get("vc.update.title", "Interstellar Voice Chat Update");
@@ -156,8 +149,6 @@ internal static class UpdateChecker
 
         foreach (var url in urls)
         {
-            InterstellarPlugin.Logger?.LogInfo($"[Update] Trying: {url}");
-
             var www = new UnityWebRequest();
             www.SetMethod(UnityWebRequest.UnityWebRequestMethod.Get);
             www.SetUrl(url);
@@ -180,7 +171,6 @@ internal static class UpdateChecker
             else
             {
                 var raw = GetUnstrippedData(www.downloadHandler);
-                InterstellarPlugin.Logger?.LogInfo($"[Update] Downloaded {raw?.Length ?? 0} bytes from {url}");
                 if (raw != null && raw.Length > 1024)
                 {
                     data = raw;
@@ -244,7 +234,6 @@ internal static class UpdateChecker
         {
             var raw = GetUnstrippedData(www.downloadHandler);
             var json = raw != null ? Encoding.UTF8.GetString(raw) : "";
-            InterstellarPlugin.Logger?.LogInfo($"[Update] Mirror API response: {json}");
             var data = JsonSerializer.Deserialize<MirrorData>(json);
             if (data?.Mirrors is { Count: > 0 }) _mirrorUrls = data.Mirrors;
         }

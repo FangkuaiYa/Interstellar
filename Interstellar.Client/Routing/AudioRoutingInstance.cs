@@ -30,8 +30,19 @@ public class AudioRoutingInstance : IHasAudioPropertyNode
     {
         sourceProvider.AddSamples(samples, offset, count);
         LastReceiptTime = System.DateTime.Now.Ticks;
+        System.Threading.Interlocked.Increment(ref _rxFrames);
     }
 
     private long LastReceiptTime = System.DateTime.Now.Ticks;
     public int ElapsedSinceLastReceipt => (int)((System.DateTime.Now.Ticks - LastReceiptTime) / 10000); // milliseconds
+
+    // --- diagnostics (read by the periodic [VC:Diag] log in VoiceRoom) ---
+    private int _rxFrames;
+    public int RxFrames => System.Threading.Interlocked.CompareExchange(ref _rxFrames, 0, 0);
+    public int BufferedSamples => sourceProvider.BufferedSamples;
+    public bool Holding => sourceProvider.IsHolding;
+    public int Underruns => sourceProvider.UnderrunCount;
+    /// <summary>Adaptive cushion depth in ms (grows on jitter, shrinks when calm).</summary>
+    public int HoldTargetMs => sourceProvider.HoldTargetMs;
+    public int IdleMs => ElapsedSinceLastReceipt;
 }

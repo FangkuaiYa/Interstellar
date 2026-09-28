@@ -83,13 +83,20 @@ internal sealed class AudioPreprocessor
         if (max > _envPeak) _envPeak = max;
         else _envPeak *= 0.998f; // slow decay (~1.5s half-life at 48 kHz / 960)
 
-        // Noise floor: tracks the slow minimum of the peak envelope with
-        // faster upward adaptation so it keeps up with changing noise.
+        // Noise floor: follows the slow minimum of the peak envelope.
+        // It may only drift UP while we are confident nobody is talking.
+        // Rising during speech (as it used to) ratchets the floor toward the
+        // voice level, and vadThresh = floor * 2.5 eventually swallows the
+        // speaker completely: you talk, nothing gets sent, and it only recovers
+        // once you stop talking and the floor collapses again — i.e. "no sound,
+        // then it suddenly comes back". IsSpeech here is still last frame's
+        // verdict (it is recomputed below).
+        bool wasSpeech = IsSpeech;
         if (!_inited) { _noiseFloor = _envPeak; _inited = true; }
         if (_envPeak < _noiseFloor)
             _noiseFloor = _noiseFloor * 0.998f + _envPeak * 0.002f; // fast drop
-        else
-            _noiseFloor = _noiseFloor * 0.9995f + _envPeak * 0.0005f; // slow rise (~0.5s)
+        else if (!wasSpeech)
+            _noiseFloor = _noiseFloor * 0.9995f + _envPeak * 0.0005f; // slow rise, quiet only
 
         // 5) Voice activity detection — adaptive threshold + 350ms hangover.
         float vadThresh = MathF.Max(_noiseFloor * 2.5f, 0.003f);
@@ -120,6 +127,12 @@ internal sealed class AudioPreprocessor
         {
             float dominance = farEndLevel / (farEndLevel + _env * 0.85f + 1e-6f);
             float echoTarget = 1f - dominance * 0.97f;
+            // Never close the mic all the way. With a quiet local mic the
+            // dominance term drives this to ~0.1, so the louder the other side
+            // spoke the more our reply was crushed to nothing (full duplex
+            // broke: "I can't get a word in until they stop"). 0.25 still cuts
+            // speaker feedback by ~12dB while leaving us audible.
+            if (echoTarget < 0.25f) echoTarget = 0.25f;
             target = MathF.Min(target, echoTarget);
         }
 

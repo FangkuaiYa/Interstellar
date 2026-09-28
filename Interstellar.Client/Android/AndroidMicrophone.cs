@@ -39,8 +39,6 @@ public class AndroidMicrophone : IDisposable
     private int _startRetryCount;
 
     private bool _loggedStartSuccess;
-    private bool _loggedFirstSamples;
-    private bool _loggedPermRequest;
 
     public bool IsRunning => _running && StarlightVoiceNative.IsCaptureRunning();
     public int TotalFramesCaptured => _totalFramesCaptured;
@@ -90,13 +88,6 @@ public class AndroidMicrophone : IDisposable
             PushDirectly(read);
         else
             PushResampled(read);
-
-        if (!_loggedFirstSamples)
-        {
-            InterstellarPlugin.Logger.LogInfo(
-                $"{_logTag} First frame captured at {_sourceSampleRate} Hz.");
-            _loggedFirstSamples = true;
-        }
     }
 
     private void PushDirectly(int totalRead)
@@ -162,11 +153,9 @@ public class AndroidMicrophone : IDisposable
         StarlightVoiceNative.StopCapture();
         _running = false;
         _loggedStartSuccess = false;
-        _loggedFirstSamples = false;
         _startRetryCount = 0;
         _sourceAccumCount = 0;
         _lastStatus = "stopped";
-        InterstellarPlugin.Logger.LogInfo($"{_logTag} Capture stopped.");
     }
 
     private bool EnsureStarted()
@@ -192,12 +181,6 @@ public class AndroidMicrophone : IDisposable
             StarlightVoiceNative.RequestRecordAudioPermission();
             _nextPermissionCheckTime = now + PermissionRetryInterval;
             _lastStatus = "requesting microphone permission";
-
-            if (!_loggedPermRequest)
-            {
-                InterstellarPlugin.Logger.LogInfo($"{_logTag} Permission request sent.");
-                _loggedPermRequest = true;
-            }
             return false;
         }
 

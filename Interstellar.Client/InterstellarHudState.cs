@@ -19,7 +19,7 @@ public static class InterstellarHudState
     private static VoiceRoomSettings? _lastSentSettings;
     public static void MarkRoomSettingsDirty() => _lastSentSettings = null;
 
-    private static TextMeshPro? _serverInfoText;
+    private static TextMeshProUGUI? _serverInfoText;
 
     private static bool _lastPublicLobbyState;
     private static int _lastPublicLobbyPlayers;
@@ -102,14 +102,15 @@ public static class InterstellarHudState
     private static void EnsureServerInfoText(HudManager hud)
     {
         if (_serverInfoText != null) return;
-        var go = new GameObject("VC_ServerInfo");
-        go.transform.SetParent(hud.transform, false);
-        go.transform.localPosition = new Vector3(-3.6f, -2.74f, -10f);
-        _serverInfoText = go.AddComponent<TextMeshPro>();
-        _serverInfoText.fontSize = 1.2f;
-        _serverInfoText.alignment = TextAlignmentOptions.Left;
-        _serverInfoText.sortingOrder = 32767;
-        _serverInfoText.rectTransform.sizeDelta = new Vector2(4f, 0.5f);
+        var canvas = VCUiKit.EnsureCanvas();
+        _serverInfoText = VCUiKit.CreateText(canvas.transform, "VC_ServerInfo", "",
+            Vector2.zero, new Vector2(900f, 60f), 30f, new Color(0.6f, 0.85f, 0.6f),
+            align: TextAlignmentOptions.BottomLeft);
+        Object.DontDestroyOnLoad(_serverInfoText.gameObject);
+        var rt = _serverInfoText.rectTransform;
+        rt.anchorMin = rt.anchorMax = new Vector2(0f, 0f);
+        rt.pivot = new Vector2(0f, 0f);
+        rt.anchoredPosition = new Vector2(30f, 20f);
     }
 
     private static void UpdateServerInfoText()

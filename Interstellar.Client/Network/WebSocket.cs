@@ -82,6 +82,17 @@ internal sealed class WebSocket : IDisposable
         State = WebSocketState.Closed;
     }
 
+    /// <summary>
+    /// Force-aborts the socket from another thread (receive watchdog).
+    /// Unblocks any pending ReceiveAsync with an exception so the read
+    /// loop exits and the connect loop can retry.
+    /// </summary>
+    public void Abort()
+    {
+        State = WebSocketState.Closed;
+        try { _inner.Abort(); } catch { }
+    }
+
     public void Dispose()
     {
         State = WebSocketState.Closed;

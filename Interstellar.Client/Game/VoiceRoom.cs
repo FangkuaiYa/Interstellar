@@ -42,8 +42,10 @@ public class VoiceRoom
 
     private int _androidNoRxFrames;
     private static bool _androidDidFullRestart;
+    private bool _androidDidResync;
     private bool _commsSabActive;
     private float _commsSabCheckTimer;
+    private float _diagTimer = 30f;
 
     private AndroidMicrophone? _androidMic;
     private AndroidSpeaker? _androidSpeaker;
@@ -52,6 +54,11 @@ public class VoiceRoom
     {
         Current?.Close();
         Current = new VoiceRoom(region, roomCode);
+        // Every path that reaches here (InterstellarRoomDriver, the F1 refresh
+        // button, the Android join watchdog) must keep the user's mic/speaker
+        // choice — otherwise refreshing the room silently unmutes the mic.
+        VoiceButtons.ApplyMicState();
+        VoiceButtons.ApplySpeakerState();
         return Current;
     }
 
@@ -114,7 +121,6 @@ public class VoiceRoom
                         _clientVolume.GetProperty(instance).Volume = 1f;
                         _normalVolume.GetProperty(instance).Volume = 0f;
                         _localMicMeter = _levelMeter.GetProperty(instance);
-                        // InterstellarPlugin.Logger.LogInfo("[VC] Local client connected.");
                     }
                     else
                     {
@@ -134,10 +140,17 @@ public class VoiceRoom
                 {
                     _clients.Remove(clientId);
                 },
-            // Android jitter buffer: 240ms (11520 samples at 48kHz).
-            // Smaller than the old 400ms to reduce latency and perceived echo,
-            // but still large enough to absorb mobile network jitter.
-            }.SetBufferLength(IsAndroid ? 11520 : 9600, IsAndroid ? 11520 : 2048));
+            // Jitter buffer cushion (steady-state playout delay) + hard capacity,
+            // both in samples @48kHz:
+            //   Android: 160ms cushion / 640ms capacity.
+            //   Desktop: 120ms cushion / 400ms capacity.
+            // bufferLength is the target the playback holds at; bufferLength*2 is
+            // where incoming bursts get trimmed back down to it (gradually).
+            // Sized from the diag logs: the link delivers in bursts (10→40→7
+            // frames/s against a steady 25/s send), so the old 120ms cushion
+            // starved once per second and the 480ms capacity was actually
+            // reached — overflow there drops *new* speech.
+            }.SetBufferLength(IsAndroid ? 7680 : 5760, IsAndroid ? 23040 : 13440));
 
         _masterVolumeProperty = masterRouter.GetProperty(_interstellar);
         SetMasterVolume(VoiceConfig.MasterVolume);
@@ -248,6 +261,7 @@ public class VoiceRoom
     {
         _androidMic?.Update();
         _androidSpeaker?.Update();
+        _interstellar.DecayFarEnd(Time.deltaTime);
 
         TryUpdateLocalProfile();
 
@@ -270,25 +284,52 @@ public class VoiceRoom
             if (camPos.HasValue) listenerPos = camPos;
         }
 
-        // Android first-join watchdog: if no incoming audio is received
-        // within ~3s of the room going active, fully restart the connection.
-        // Flag is static so it survives the restart and only fires once.
-        if (IsAndroid && !_androidDidFullRestart && listenerPos.HasValue)
+        // Android first-join watchdog: if we know about a peer but the relay is
+        // provably dead — not one packet of any kind has come back from them —
+        // resync, then restart. It must NOT fire while the room is empty (that
+        // churns against the next join) and it must NOT fire merely because
+        // nobody has spoken yet: the old test was "anyone's audio level > 0",
+        // which tore down a perfectly healthy room within 5s of joining
+        // whenever the peer happened to be quiet. Heartbeats are independent of
+        // speech, so "have I ever received anything" is the honest signal.
+        // The 8s threshold covers one full heartbeat period with slack.
+        if (IsAndroid && !_androidDidFullRestart && listenerPos.HasValue && _clients.Count > 0)
         {
-            bool hasRx = false;
-            foreach (var c in _clients.Values)
-                if (c.Level > 0f) { hasRx = true; break; }
-            if (hasRx)
+            bool relayAlive = false;
+            foreach (var kv in _clients)
+            {
+                if (kv.Value.Level > 0f || _interstellar.PeerHasReceived(kv.Key))
+                {
+                    relayAlive = true;
+                    break;
+                }
+            }
+            if (relayAlive)
             {
                 _androidDidFullRestart = true;
+                _androidNoRxFrames = 0;
             }
             else
             {
                 _androidNoRxFrames++;
-                if (_androidNoRxFrames >= 180)
+                if (_androidNoRxFrames >= 480)
                 {
+                    if (!_androidDidResync)
+                    {
+                        // Cheap first step: re-request the peer list. A missed
+                        // join/setClient broadcast is the common cause and costs
+                        // one packet, whereas a full restart tears down every
+                        // VCPlayer on both ends and is what created the
+                        // "join race" we kept seeing in the logs.
+                        _androidDidResync = true;
+                        _androidNoRxFrames = 0;
+                        InterstellarPlugin.Logger.LogWarning(
+                            $"[VC] Android: no packet at all from {_clients.Count} peer(s) after 8s — resyncing.");
+                        _interstellar.ResyncPeers("no incoming audio");
+                        return;
+                    }
                     InterstellarPlugin.Logger.LogWarning(
-                        "[VC] Android: no incoming audio after 3s — restarting room.");
+                        $"[VC] Android: still no packet from {_clients.Count} peer(s) after resync — restarting room.");
                     _androidDidFullRestart = true;
                     Close();
                     RestartForCurrentGame();
@@ -334,6 +375,55 @@ public class VoiceRoom
             else
                 client.UpdateTaskPhase(listenerPos, speakerCache, _virtualMics, localInVent, _commsSabActive);
         }
+
+        _diagTimer -= Time.deltaTime;
+        if (_diagTimer <= 0f)
+        {
+            // 30s: enough to catch a stalled link, quiet enough not to bury the log.
+            _diagTimer = 30f;
+            LogDiagnostics();
+        }
+    }
+
+    /// <summary>
+    /// One line every 30s that answers "which link is broken":
+    ///   tx / txErr  — frames we encoded and sent (0 = our mic never got out)
+    ///   rx          — frames we received (stalls here = sender/VAD/network)
+    ///   buf/target  — jitter cushion level vs its adaptive depth (ms)
+    ///   buf (ms)    — jitter cushion level (near 0 while rx grows = cushion failing)
+    ///   lvl         — level meter, post-buffer (rx grows but lvl=0 = not playing)
+    ///   aud/map/vol — playback gates (all 0 = something muted this client)
+    /// </summary>
+    private void LogDiagnostics()
+    {
+        if (_clients.Count == 0) return;
+        var sb = new System.Text.StringBuilder(320);
+        sb.Append("[VC:Diag] gate=").Append(_interstellar.SendGate)
+          .Append(" tx=").Append(_interstellar.TxFrames)
+          .Append(" dVad=").Append(_interstellar.TxDropVad)
+          .Append(" dMute=").Append(_interstellar.TxDropMute)
+          .Append(" txErr=").Append(_interstellar.TxEncodeErrors)
+          .Append(" micLvl=").Append(LocalMicLevel.ToString("0.00"))
+          .Append(" farEnd=").Append(_interstellar.FarEndLevel.ToString("0.00"));
+        foreach (var kv in _clients)
+        {
+            var p = kv.Value;
+            _interstellar.GetDiag(kv.Key, out int rx, out int buf, out int un, out bool hold, out int idle, out int tgt);
+            sb.Append(" | cid=").Append(kv.Key)
+              .Append(" pid=").Append(p.PlayerId)
+              .Append(" rx=").Append(rx)
+              .Append(" idle=").Append(idle).Append("ms")
+              .Append(" buf=").Append(buf / 48).Append("ms")
+              .Append("/").Append(tgt).Append("ms")
+              .Append(hold ? "/hold" : "")
+              .Append(" un=").Append(un)
+              .Append(" lvl=").Append(p.Level.ToString("0.00"))
+              .Append(" vol=").Append(p.Volume.ToString("0.00"))
+              .Append(" aud=").Append(p.IsAudible ? 1 : 0)
+              .Append(" map=").Append(p.IsMapped ? 1 : 0)
+              .Append(" vmute=").Append(_interstellar.IsClientMuted(kv.Key) ? 1 : 0);
+        }
+        InterstellarPlugin.Logger.LogInfo(sb.ToString());
     }
 
     private static bool CheckCommsSabotage()

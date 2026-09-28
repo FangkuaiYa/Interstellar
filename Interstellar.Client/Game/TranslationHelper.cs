@@ -65,7 +65,6 @@ public static class TranslationHelper
                 _stringData[name] = node.InnerText;
         }
 
-        InterstellarPlugin.Logger?.LogInfo($"[VC] Translation: loaded {_stringData.Count} keys from {locale}.xml.");
         return true;
     }
 

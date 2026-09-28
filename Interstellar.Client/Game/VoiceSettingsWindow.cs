@@ -110,16 +110,6 @@ public class VoiceSettingsWindow : MonoBehaviour
 
             RebuildContent();
             if (_scroll != null) _scroll.verticalNormalizedPosition = 1f;
-
-            try
-            {
-                InterstellarPlugin.Logger?.LogInfo(
-                    $"[VC] Settings shown: canvasActive={_canvas.gameObject.activeSelf} " +
-                    $"renderMode={_canvas.renderMode} sortingOrder={_canvas.sortingOrder} " +
-                    $"uiRootActive={_uiRoot.activeSelf} winPos={_winRt.anchoredPosition} " +
-                    $"winSize={_winRt.sizeDelta} scaleFactor={_canvas.scaleFactor}");
-            }
-            catch { }
         }
         catch (Exception e)
         {

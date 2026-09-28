@@ -84,8 +84,9 @@ public class VCPlayer
 
     public void SetVolume(float v)
     {
+        if (!float.IsFinite(v)) return;
         if (VoiceConfig.GetPlayerAutoVolume(_playerName)) return;
-        _clientVolume.Volume = v;
+        _clientVolume.Volume = Math.Clamp(v, 0f, 2f);
     }
 
     private float _autoVolume = 1f;

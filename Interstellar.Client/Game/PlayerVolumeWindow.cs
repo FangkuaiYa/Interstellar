@@ -60,8 +60,37 @@ public class PlayerVolumeWindow : MonoBehaviour
             if (_refreshTimer <= 0f)
             {
                 _refreshTimer = 0.5f;
-                RebuildContent();
+                // Rebuild only when the player list actually changed —
+                // rebuilding on a timer destroyed the slider under the
+                // user's finger every 0.5s and killed active drags.
+                string sig = BuildPlayersSignature();
+                if (sig != _playersSig) RebuildContent();
             }
+        }
+    }
+
+    private string _playersSig = "";
+
+    private string BuildPlayersSignature()
+    {
+        try
+        {
+            var room = VoiceRoom.Current;
+            if (room == null) return "";
+            var sb = new System.Text.StringBuilder();
+            foreach (var c in room.AllClients)
+            {
+                if (c.PlayerId == byte.MaxValue) continue;
+                sb.Append(c.ClientId).Append(':').Append(c.PlayerId).Append(':')
+                  .Append(c.PlayerName).Append(':').Append(c.IsMapped ? 1 : 0).Append(';');
+            }
+            return sb.ToString();
+        }
+        catch
+        {
+            // Player list can be mutated by the network thread mid-enumeration;
+            // report "unchanged" so we simply retry on the next tick.
+            return _playersSig;
         }
     }
 
@@ -254,6 +283,7 @@ public class PlayerVolumeWindow : MonoBehaviour
 
         _content.sizeDelta = new Vector2(ContentW, _y + 24f);
         if (_scroll != null) _scroll.verticalNormalizedPosition = keepScroll;
+        _playersSig = BuildPlayersSignature();
     }
 
     private RectTransform AddRow()
@@ -279,7 +309,7 @@ public class PlayerVolumeWindow : MonoBehaviour
     {
         var row = AddRow();
         VCUiKit.CreateText(row, "Info", text,
-            new Vector2(-ContentW / 2f + 70f + 260f, 0f), new Vector2(ContentW - 120f, RowH - 12f),
+            Vector2.zero, new Vector2(ContentW - 40f, RowH - 12f),
             F(19f), Color.gray, FontStyles.Normal, TextAlignmentOptions.Left, true);
     }
 
@@ -304,24 +334,33 @@ public class PlayerVolumeWindow : MonoBehaviour
         if (displayName == "..." && !string.IsNullOrWhiteSpace(p.PlayerName))
             displayName = p.PlayerName;
 
+        // Row spans [-half, +half] with center anchor (0.5, 0.5).
+        float half = ContentW / 2f;
+        float nameW = 200f;
+        float valueW = 70f;
+        float autoW = 80f;
+        float pad = 40f;
+
+        // Name: left-aligned block, left edge at -half + pad.
         VCUiKit.CreateText(row, "Name", displayName,
-            new Vector2(-ContentW / 2f + 40f, 0f), new Vector2(200f, RowH - 12f),
+            new Vector2(-half + pad + nameW / 2f, 0f), new Vector2(nameW, RowH - 12f),
             F(21f), Color.white, FontStyles.Bold, TextAlignmentOptions.Left, true);
 
         string pname = p.PlayerName;
         bool isAuto = VoiceConfig.GetPlayerAutoVolume(pname);
 
+        // Value: right-aligned, right edge at +half - pad.
         var valueTmp = VCUiKit.CreateText(row, "Value", $"{p.Volume * 100f:F0}%", Vector2.zero,
-            new Vector2(70f, RowH - 12f), F(20f), new Color(1f, 0.86f, 0.55f, 1f),
+            new Vector2(valueW, RowH - 12f), F(20f), new Color(1f, 0.86f, 0.55f, 1f),
             FontStyles.Bold, TextAlignmentOptions.Right);
         var vrt = (RectTransform)valueTmp.transform;
         vrt.anchorMin = vrt.anchorMax = new Vector2(1f, 0.5f);
-        vrt.anchoredPosition = new Vector2(-20f, 0f);
+        vrt.anchoredPosition = new Vector2(-pad, 0f);
 
-        float autoW = 80f;
-        float autoX = -(20f + 70f + 14f + autoW / 2f);
+        // Auto toggle: sits between value and slider.
+        float autoCenter = half - pad - valueW / 2f - 14f - autoW / 2f;
         VCUiKit.CreateToggle(row, TranslationHelper.Get("vc.player.auto", "Auto"),
-            new Vector2(autoX, 0f), new Vector2(autoW, 40f),
+            new Vector2(autoCenter, 0f), new Vector2(autoW, 40f),
             () => VoiceConfig.GetPlayerAutoVolume(pname),
             v =>
             {
@@ -329,10 +368,12 @@ public class PlayerVolumeWindow : MonoBehaviour
                 RebuildContent();
             }, 18f);
 
-        float sliderW = ContentW - 200f - 20f - 70f - 14f - autoW - 16f - 40f;
+        // Slider: fills the gap between name and toggle.
+        float sliderLeft = -half + pad + nameW + 20f;
+        float sliderRight = autoCenter - autoW / 2f - 16f;
+        float sliderW = sliderRight - sliderLeft;
         if (sliderW < 100f) sliderW = 100f;
-        float sliderX = autoX - autoW / 2f - 16f - sliderW / 2f;
-        VCUiKit.CreateSlider(row, new Vector2(sliderX, 0f),
+        VCUiKit.CreateSlider(row, new Vector2((sliderLeft + sliderRight) / 2f, 0f),
             new Vector2(sliderW, 44f), 0f, 2f, p.Volume,
             v =>
             {

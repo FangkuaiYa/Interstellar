@@ -172,7 +172,6 @@ public class PublicLobbyWindow : MonoBehaviour
                         }
                         else if (payload.StartsWith("3")) // ack (join_lobby response)
                         {
-                            InterstellarPlugin.Logger?.LogInfo($"[VC] Ack raw: {payload}");
                             var rest = payload.Substring(1);
                             int bracket = rest.IndexOf('[');
                             if (bracket > 0 && int.TryParse(rest.Substring(0, bracket), out int ackId))
@@ -469,7 +468,6 @@ public class PublicLobbyWindow : MonoBehaviour
             _pendingCopyAck = _ackSeq;
             _pendingCopyLobbyId = lobby.id;
             _status = Get("vc.lobby.copying", "Getting code...");
-            InterstellarPlugin.Logger?.LogInfo($"[VC] Request lobby code: ack={_ackSeq} id={lobby.id}");
             SendRaw($"42{_ackSeq}[\"join_lobby\",{lobby.id}]");
         }
         catch (Exception e)
@@ -481,7 +479,6 @@ public class PublicLobbyWindow : MonoBehaviour
 
     private void HandleLobbyAck(int ackId, string argsJson)
     {
-        InterstellarPlugin.Logger?.LogInfo($"[VC] Lobby ack: ackId={ackId} args={argsJson} pending={_pendingCopyAck}");
         if (ackId != _pendingCopyAck) return;
         _pendingCopyAck = -1;
         try

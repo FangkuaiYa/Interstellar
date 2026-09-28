@@ -51,13 +51,13 @@ public static class VoiceConfig
     // ── Volume ─────────────────────────────────────────────
     public static float MasterVolume
     {
-        get => Math.Clamp(_masterVol?.Value ?? 1f, 0.1f, 3f);
-        set { if (_masterVol != null) _masterVol.Value = value; }
+        get { float v = _masterVol?.Value ?? 1f; return float.IsFinite(v) ? Math.Clamp(v, 0.1f, 3f) : 1f; }
+        set { if (_masterVol != null && float.IsFinite(value)) _masterVol.Value = value; }
     }
     public static float MicVolume
     {
-        get => Math.Clamp(_micVol?.Value ?? 1f, 0.1f, 3f);
-        set { if (_micVol != null) _micVol.Value = value; }
+        get { float v = _micVol?.Value ?? 1f; return float.IsFinite(v) ? Math.Clamp(v, 0.1f, 3f) : 1f; }
+        set { if (_micVol != null && float.IsFinite(value)) _micVol.Value = value; }
     }
 
     // ── Audio processing ───────────────────────────────────
@@ -161,49 +161,87 @@ public static class VoiceConfig
     // ── Per-player volume (0%-200%, remembered by player name) ─
     // In-memory cache is the source of truth during play; mirrored to a
     // single serialized config entry so it survives between sessions.
+    // All access is guarded by PlayerStateLock: the WebSocket receive
+    // thread reads these (profile updates) while the UI thread writes.
     public static readonly Dictionary<string, float> PlayerVolumes = new();
+    private static readonly object PlayerStateLock = new();
+    private static bool _volumesDirty, _autoDirty;
 
     public static float GetPlayerVolume(string playerName)
-        => !string.IsNullOrEmpty(playerName) && PlayerVolumes.TryGetValue(playerName, out var v) ? v : 1f;
+    {
+        if (string.IsNullOrEmpty(playerName)) return 1f;
+        lock (PlayerStateLock)
+            return PlayerVolumes.TryGetValue(playerName, out var v) ? v : 1f;
+    }
 
     public static void SetPlayerVolume(string playerName, float volume)
     {
         if (string.IsNullOrEmpty(playerName)) return;
-        PlayerVolumes[playerName] = Math.Clamp(volume, 0f, 2f);
-        SavePlayerVolumes();
+        if (!float.IsFinite(volume)) volume = 1f;
+        lock (PlayerStateLock)
+        {
+            PlayerVolumes[playerName] = Math.Clamp(volume, 0f, 2f);
+            _volumesDirty = true;
+        }
+        // The config file itself is written by FlushPending() (at most once
+        // per frame) — a slider drag used to trigger a full config-file
+        // rewrite on every tick.
+    }
+
+    /// <summary>
+    /// Writes pending per-player volume/auto changes to the config file.
+    /// Called once per frame from VCManager.Update.
+    /// </summary>
+    public static void FlushPending()
+    {
+        bool vol, auto;
+        lock (PlayerStateLock)
+        {
+            vol = _volumesDirty; auto = _autoDirty;
+            _volumesDirty = false; _autoDirty = false;
+        }
+        if (vol) SavePlayerVolumes();
+        if (auto) SavePlayerAutoVolume();
     }
 
     private static void SavePlayerVolumes()
     {
         if (_savedPlayerVolumes == null) return;
         var sb = new System.Text.StringBuilder();
-        foreach (var kv in PlayerVolumes)
+        lock (PlayerStateLock)
         {
-            if (Math.Abs(kv.Value - 1f) < 0.005f) continue; // skip defaults, keep the entry small
-            if (string.IsNullOrEmpty(kv.Key)) continue;
-            if (sb.Length > 0) sb.Append(';');
-            sb.Append(kv.Key.Replace(';', '_').Replace('=', '_'));
-            sb.Append('=');
-            sb.Append(kv.Value.ToString("F2", System.Globalization.CultureInfo.InvariantCulture));
+            foreach (var kv in PlayerVolumes)
+            {
+                if (Math.Abs(kv.Value - 1f) < 0.005f) continue; // skip defaults, keep the entry small
+                if (string.IsNullOrEmpty(kv.Key)) continue;
+                if (sb.Length > 0) sb.Append(';');
+                sb.Append(kv.Key.Replace(';', '_').Replace('=', '_'));
+                sb.Append('=');
+                sb.Append(kv.Value.ToString("F2", System.Globalization.CultureInfo.InvariantCulture));
+            }
         }
         _savedPlayerVolumes.Value = sb.ToString();
     }
 
     private static void LoadPlayerVolumes()
     {
-        PlayerVolumes.Clear();
-        var raw = _savedPlayerVolumes?.Value ?? "";
-        if (string.IsNullOrEmpty(raw)) return;
-        foreach (var part in raw.Split(';'))
+        lock (PlayerStateLock)
         {
-            if (string.IsNullOrEmpty(part)) continue;
-            int idx = part.LastIndexOf('=');
-            if (idx <= 0 || idx == part.Length - 1) continue;
-            var name = part[..idx];
-            var valStr = part[(idx + 1)..];
-            if (float.TryParse(valStr, System.Globalization.NumberStyles.Float,
-                    System.Globalization.CultureInfo.InvariantCulture, out var v))
-                PlayerVolumes[name] = Math.Clamp(v, 0f, 2f);
+            PlayerVolumes.Clear();
+            var raw = _savedPlayerVolumes?.Value ?? "";
+            if (string.IsNullOrEmpty(raw)) return;
+            foreach (var part in raw.Split(';'))
+            {
+                if (string.IsNullOrEmpty(part)) continue;
+                int idx = part.LastIndexOf('=');
+                if (idx <= 0 || idx == part.Length - 1) continue;
+                var name = part[..idx];
+                var valStr = part[(idx + 1)..];
+                if (float.TryParse(valStr, System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out var v)
+                    && float.IsFinite(v))
+                    PlayerVolumes[name] = Math.Clamp(v, 0f, 2f);
+            }
         }
     }
 
@@ -214,36 +252,48 @@ public static class VoiceConfig
     public static readonly HashSet<string> PlayerAutoVolume = new();
 
     public static bool GetPlayerAutoVolume(string playerName)
-        => !string.IsNullOrEmpty(playerName) && PlayerAutoVolume.Contains(playerName);
+    {
+        if (string.IsNullOrEmpty(playerName)) return false;
+        lock (PlayerStateLock) return PlayerAutoVolume.Contains(playerName);
+    }
 
     public static void SetPlayerAutoVolume(string playerName, bool auto)
     {
         if (string.IsNullOrEmpty(playerName)) return;
-        if (auto) PlayerAutoVolume.Add(playerName);
-        else PlayerAutoVolume.Remove(playerName);
-        SavePlayerAutoVolume();
+        lock (PlayerStateLock)
+        {
+            if (auto) PlayerAutoVolume.Add(playerName);
+            else PlayerAutoVolume.Remove(playerName);
+            _autoDirty = true;
+        }
     }
 
     private static void SavePlayerAutoVolume()
     {
         if (_savedPlayerAutoVolume == null) return;
         var sb = new System.Text.StringBuilder();
-        foreach (var name in PlayerAutoVolume)
+        lock (PlayerStateLock)
         {
-            if (string.IsNullOrEmpty(name)) continue;
-            if (sb.Length > 0) sb.Append(';');
-            sb.Append(name.Replace(';', '_').Replace('=', '_'));
+            foreach (var name in PlayerAutoVolume)
+            {
+                if (string.IsNullOrEmpty(name)) continue;
+                if (sb.Length > 0) sb.Append(';');
+                sb.Append(name.Replace(';', '_').Replace('=', '_'));
+            }
         }
         _savedPlayerAutoVolume.Value = sb.ToString();
     }
 
     private static void LoadPlayerAutoVolume()
     {
-        PlayerAutoVolume.Clear();
-        var raw = _savedPlayerAutoVolume?.Value ?? "";
-        if (string.IsNullOrEmpty(raw)) return;
-        foreach (var part in raw.Split(';'))
-            if (!string.IsNullOrEmpty(part)) PlayerAutoVolume.Add(part);
+        lock (PlayerStateLock)
+        {
+            PlayerAutoVolume.Clear();
+            var raw = _savedPlayerAutoVolume?.Value ?? "";
+            if (string.IsNullOrEmpty(raw)) return;
+            foreach (var part in raw.Split(';'))
+                if (!string.IsNullOrEmpty(part)) PlayerAutoVolume.Add(part);
+        }
     }
 
     // ── Device caches ──────────────────────────────────────

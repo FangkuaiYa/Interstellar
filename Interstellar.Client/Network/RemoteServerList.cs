@@ -45,7 +45,6 @@ public static class RemoteServerList
                     _cached.AddRange(parsed);
                 }
                 _fetchedOnce = true;
-                InterstellarPlugin.Logger?.LogInfo($"[VC:RemoteServers] Loaded {parsed.Count} server(s) from remote list.");
             }
             catch (Exception e)
             {

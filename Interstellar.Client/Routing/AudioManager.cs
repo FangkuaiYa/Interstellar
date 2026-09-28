@@ -123,7 +123,20 @@ internal class AudioManager : IHasAudioPropertyNode
             }
             if (!router.IsGlobalRouter) foreach (var c in router.GetChildRouters()) GenerateInner(c, nodes[router.Id]?.Processor);
         }
-        BufferedSampleProvider sourceProvider = new(WaveFormat.CreateIeeeFloatWaveFormat(AudioConstants.ClockRate, 1), bufferMaxLength) { DiscardOnBufferOverflow = true };
+        BufferedSampleProvider sourceProvider = new(WaveFormat.CreateIeeeFloatWaveFormat(AudioConstants.ClockRate, 1), bufferMaxLength)
+        {
+            DiscardOnBufferOverflow = true,
+            // Jitter buffer: playout waits for (and after every underrun rebuilds)
+            // a bufferLength-sized cushion, and anything above 2 * bufferLength is
+            // trimmed back to it. bufferLength used to be dead config — the level
+            // sat at ~0, so every late frame became an audible gap.
+            HoldOnUnderrun = true,
+            HoldTargetSamples = bufferLength,
+            HoldTargetMinSamples = bufferLength,
+            HoldTargetMaxSamples = bufferLength * 2,
+            BufferCutSize = bufferLength * 2,
+            BufferCutToSize = bufferLength,
+        };
         GenerateInner(router, sourceProvider);
         return new(this.buffers, nodes, sourceProvider, groupId);
     }

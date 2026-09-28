@@ -33,6 +33,7 @@ internal class VCManager : MonoBehaviour
 
     void Update()
     {
+        VoiceConfig.FlushPending();
         switch (SceneManager.GetActiveScene().name)
         {
             case "OnlineGame":

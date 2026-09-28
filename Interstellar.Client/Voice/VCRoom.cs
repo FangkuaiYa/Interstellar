@@ -57,6 +57,42 @@ public class VCRoom : IConnectionContext, IHasAudioPropertyNode, IMicrophoneCont
         lock (_audioLock) { return _clientMuted.TryGetValue(clientId, out var v) && v; }
     }
 
+    // ── Diagnostics (periodic [VC:Diag] log) ───────────────────
+
+    /// <summary>Opus frames encoded and sent since the connection opened.</summary>
+    public int TxFrames => connection.TxFrames;
+    /// <summary>Encode failures — should stay 0 now that frames are normalized.</summary>
+    public int TxEncodeErrors => connection.TxEncodeErrors;
+    /// <summary>Remote playback level used to duck the local mic (echo suppression).</summary>
+    public float FarEndLevel => _farEndLevel;
+
+    /// <summary>Re-request the peer list from the server (cheap self-heal when a
+    /// join/setClient broadcast was missed).</summary>
+    public void ResyncPeers(string reason) => connection.ResyncPeers(reason);
+
+    /// <summary>True once any packet has come back from this peer — used by the
+    /// Android watchdog to tell a dead relay apart from a peer who is simply
+    /// not talking (a quiet peer still heartbeats, and restarting the room over
+    /// a silent peer tears down a perfectly healthy connection).</summary>
+    public bool PeerHasReceived(int clientId) => connection.PeerHasReceived(clientId);
+
+    public void GetDiag(int clientId, out int rx, out int buf, out int underruns, out bool hold, out int idleMs, out int targetMs)
+    {
+        rx = 0; buf = 0; underruns = 0; hold = false; idleMs = -1; targetMs = 0;
+        lock (_audioLock)
+        {
+            if (audioInstances.TryGetValue(clientId, out var inst))
+            {
+                rx = inst.RxFrames;
+                buf = inst.BufferedSamples;
+                underruns = inst.Underruns;
+                hold = inst.Holding;
+                idleMs = inst.IdleMs;
+                targetMs = inst.HoldTargetMs;
+            }
+        }
+    }
+
     /// <summary>
     /// 
     /// </summary>
@@ -92,7 +128,6 @@ public class VCRoom : IConnectionContext, IHasAudioPropertyNode, IMicrophoneCont
     /// <summary>
     private float _localLevel;
     public float LocalLevel => _localLevel;
-    private bool _firstAudioSent;
 
     /// Sends audio data.
     /// </summary>
@@ -117,17 +152,42 @@ public class VCRoom : IConnectionContext, IHasAudioPropertyNode, IMicrophoneCont
         bool shouldSend = !VoiceConfig.VADEnabled || _micPre.IsSpeech;
         if (!Mute && shouldSend)
         {
-            if (!_firstAudioSent)
-            {
-                _firstAudioSent = true;
-                InterstellarPlugin.Logger.LogInfo("[VC:MicTx] First audio frame sent to server.");
-            }
             this.connection.SendAudio(samples, samplesLength, samplesMilliseconds);
         }
+        else if (Mute) System.Threading.Interlocked.Increment(ref _dropMute);
+        else System.Threading.Interlocked.Increment(ref _dropVad);
         OnAudioSent(samples, samplesLength);
     }
 
+    private int _dropMute, _dropVad;
+    public int TxDropMute => _dropMute;
+    public int TxDropVad => _dropVad;
+    public bool HasPeers => connection.HasPeers;
+    /// <summary>Why the microphone is (or is not) producing frames right now —
+    /// printed by [VC:Diag] so a silent session is attributable in one line.</summary>
+    public string SendGate =>
+        Mute ? "mute"
+        : VoiceConfig.VADEnabled && !_micPre.IsSpeech ? "vad"
+        : !connection.HasPeers ? "nopeers"
+        : "ok";
+
     ISampleProvider? ISpeakerContext.GetEndpoint() => audioManager.Endpoint;
+
+    /// <summary>
+    /// Decays the far-end (remote playback) level when no audio frames are
+    /// arriving. Without this, _farEndLevel freezes at its last value the
+    /// moment the remote side goes silent (their VAD stops sending), and the
+    /// echo-duck in AudioPreprocessor keeps crushing the local mic forever —
+    /// nobody can hear us until the room is restarted.
+    /// </summary>
+    public void DecayFarEnd(float dt)
+    {
+        if (_farEndLevel > 0f)
+        {
+            _farEndLevel -= dt * 0.6f;
+            if (_farEndLevel < 0f) _farEndLevel = 0f;
+        }
+    }
 
     IMicrophone? microphone = null;
     public IMicrophone? Microphone
