@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Text;
 using System.Text.Json;
+using Interstellar.Network.P2P;
 using Interstellar.Voice;
 
 namespace Interstellar.Network;
@@ -28,6 +29,14 @@ internal class ServerConnection : IConnectionContext, IDisposable
     private bool _disposed, _connected;
     private int _connecting;
     private string? _sid;
+    /// <summary>P2P media transport: STUN discovery, hole punching and the sealed
+    /// UDP media path. Media lives here; the websocket is control-plane only.</summary>
+    private P2pTransport? _p2p;
+    /// <summary>Transport mode snapshotted when this connection was created —
+    /// Auto (P2P first, server relay per peer without a path) / P2P (direct only)
+    /// / Relay (server relay only, the original scheme). The settings panel
+    /// restarts the room after a change, so this never needs to change live.</summary>
+    private readonly string _transport;
     private int _localPlayerId, _localClientId;
     private bool _hasIds;
     private bool _joinIssued;
@@ -61,8 +70,50 @@ internal class ServerConnection : IConnectionContext, IDisposable
     private const int ResyncMaxMs = 30000;
     public int TxFrames => _txFrames;
     public int TxEncodeErrors => _txEncodeErrors;
-    private readonly ConcurrentDictionary<int, Concentus.IOpusDecoder> _decoders = new();
+    /// <summary>Per-peer decode state: the Opus decoder plus the P2P frame counter
+    /// that lets us notice a dropped UDP frame instead of playing a hole. The relay
+    /// path carries no counter (the server forwards base64 Opus verbatim), so it
+    /// reconstructs the same signal from the arrival cadence instead.</summary>
+    private sealed class VoiceDecoder
+    {
+        public readonly Concentus.IOpusDecoder Dec =
+            Concentus.OpusCodecFactory.CreateDecoder(48000, 1);
+        public bool HasCounter;
+        public uint LastCounter;
+        /// <summary>TickCount64 of the previous arrival; 0 until the first packet.</summary>
+        public long LastArrivalMs;
+        /// <summary>Recent inter-arrival gaps (ms). Their median is the stream's true
+        /// cadence — it separates "a frame went missing" (elapsed ≫ median) from
+        /// "the sender emits in bursts" (median ≈ 0, elapsed means batching).</summary>
+        public readonly long[] Deltas = new long[8];
+        public int DeltaCount;
+        public int DeltaIdx;
+        /// <summary>Concealment diagnostics: log the first couple of real events per
+        /// peer so recovery is verifiable from the log, then stay quiet.</summary>
+        public int ConcealLogged;
+
+        public void NoteDelta(long ms)
+        {
+            Deltas[DeltaIdx] = ms;
+            DeltaIdx = (DeltaIdx + 1) & 7;
+            if (DeltaCount < 8) DeltaCount++;
+        }
+
+        public long MedianDelta()
+        {
+            if (DeltaCount == 0) return 0;
+            Span<long> d = stackalloc long[DeltaCount];
+            for (int i = 0; i < DeltaCount; i++) d[i] = Deltas[i];
+            d.Sort();
+            return d[DeltaCount / 2];
+        }
+    }
+    private readonly ConcurrentDictionary<int, VoiceDecoder> _decoders = new();
     private readonly HashSet<int> _decodeErrors = new();
+    /// <summary>How many frames we are willing to synthesise for one gap. Opus PLC
+    /// stays plausible for ~100ms; beyond that it would invent speech nobody said
+    /// and the jitter buffer would be further behind than the dropout saved.</summary>
+    private const int MaxConcealFrames = 5;
 
     // Per-peer voice state (synced via server events):
     // mute is tracked from VAD broadcasts, radio from our RADIO: signal marker.
@@ -96,6 +147,15 @@ internal class ServerConnection : IConnectionContext, IDisposable
         // official server and the EdgeOne servers. EIO=4 breaks the Cloudflare
         // server when we don't actively send the "40" connect packet.
         _wsUrl = (u.Scheme == "https" ? "wss" : "ws") + "://" + u.Host + (u.IsDefaultPort ? "" : ":" + u.Port) + "/socket.io/?EIO=3&transport=websocket";
+        // Snapshot the mode from config; the panel restarts the room on change.
+        _transport = VoiceConfig.TransportMode;
+        // The P2P socket is always created, even in Relay mode: it is what lets a
+        // peer pinned to strict P2P still be heard by us (their frames arrive on
+        // UDP and are accepted regardless of our transmit mode). The mode only
+        // decides where our own media goes.
+        _p2p = new P2pTransport(OnP2pAudio, SendP2pSignal);
+        _p2p.Start();
+        InterstellarPlugin.Logger.LogInfo("[Srv] transport=" + _transport);
         StartConnectLoop();
     }
 
@@ -187,6 +247,7 @@ internal class ServerConnection : IConnectionContext, IDisposable
     /// </summary>
     void DropPeers()
     {
+        _p2p?.Clear();
         foreach (var v in _peers.Values)
         {
             _decoders.TryRemove(v.clientId, out _);
@@ -363,6 +424,7 @@ internal class ServerConnection : IConnectionContext, IDisposable
 
     void RemovePeer(string sid)
     {
+        _p2p?.RemovePeer(sid);
         if (!_peers.TryRemove(sid, out var v)) return;
         InterstellarPlugin.Logger.LogInfo($"[Srv] Dropping stale peer sid={sid} cid={v.clientId} (not in roster).");
         foreach (var kv in _peers)
@@ -451,20 +513,193 @@ internal class ServerConnection : IConnectionContext, IDisposable
             try { _context.OnCustomMessageReceived(Convert.FromBase64String(dataStr.Substring(4))); } catch { }
             return;
         }
-        try { DecodeOpus(cid, Convert.FromBase64String(dataStr)); } catch { }
+        // P2P signalling: candidate lists + ephemeral public keys, relayed by the
+        // voice server like any other signal.
+        if (dataStr.StartsWith("P2P:", StringComparison.Ordinal))
+        {
+            try
+            {
+                var json = Encoding.UTF8.GetString(Convert.FromBase64String(dataStr.Substring(4)));
+                _p2p?.HandleSignal(from, json);
+            }
+            catch { }
+            return;
+        }
+        // Anything else is relayed media: base64 Opus on the "signal" event, the
+        // original scheme. It is accepted in every transport mode (a peer pinned
+        // to Relay, or an older client, must still be heard), so only our own
+        // transmit side is governed by the mode.
+        try
+        {
+            var opus = Convert.FromBase64String(dataStr);
+            if (opus.Length > 0) DecodeOpus(cid, opus);
+        }
+        catch { /* not base64 — a marker we don't know; ignore */ }
     }
 
-    void DecodeOpus(int clientId, byte[] opus)
+    void DecodeOpus(int clientId, byte[] opus, uint counter = 0, bool hasCounter = false)
     {
         try
         {
-            if (!_decoders.TryGetValue(clientId, out var dec))
-            { dec = Concentus.OpusCodecFactory.CreateDecoder(48000, 1); _decoders[clientId] = dec; }
-            var buf = new float[2048];
+            var st = _decoders.GetOrAdd(clientId, _ => new VoiceDecoder());
+            long now = Environment.TickCount64;
+
+            // Opus reports the packet's own duration — required by PLC/FEC, which
+            // refuse to guess how much audio is missing.
+            int frame = 0;
+            try { frame = Concentus.Structs.OpusPacketInfo.GetNumSamples(opus, 48000); }
+            catch { /* unparsable TOC — the plain decode below will reject it too */ }
+
+            // Arrival bookkeeping for both paths: the relay inference below needs it,
+            // and it stays warm across an Auto-mode P2P→relay switchover. Zero-length
+            // deltas are skipped so a burst cannot drag the median toward 0.
+            long elapsed = st.LastArrivalMs == 0 ? 0 : now - st.LastArrivalMs;
+            st.LastArrivalMs = now;
+            if (elapsed > 0 && frame > 0) st.NoteDelta(elapsed);
+
+            int lost = 0;
+            if (hasCounter && frame > 0)
+            {
+                if (st.HasCounter)
+                {
+                    if (counter > st.LastCounter + 1)
+                    {
+                        var gap = counter - st.LastCounter - 1;
+                        lost = gap > MaxConcealFrames ? 0 : (int)gap;
+                        if (gap > MaxConcealFrames)
+                        {
+                            // Far more than a stray drop — a stall, a route change or a
+                            // counter reset. Skip concealment rather than fabricate.
+                        }
+                    }
+                    else if (st.LastCounter - counter > 64)
+                    {
+                        // Counter ran backwards by a lot: the peer restarted its stream.
+                        st.HasCounter = false;
+                    }
+                    // counter <= LastCounter within 64 = reordered/duplicate UDP packet:
+                    // decode it, but never treat it as a gap.
+                }
+                st.LastCounter = counter;
+                st.HasCounter = true;
+            }
+            else if (frame > 0 && elapsed > 0 && st.DeltaCount >= 4)
+            {
+                // ── Relay: the "signal" event carries no counter (the BCL server
+                // forwards base64 Opus verbatim and the payload must stay the original
+                // scheme), so infer losses from the arrival cadence instead. With a
+                // smooth ~frame-time median, k+1 cadences of quiet before the next
+                // packet means k frames never arrived (Go-server rate limiter dropping
+                // signals, a capture hole, a retransmit stall). A median near zero
+                // means the sender is bursty and elapsed time measures batching, not
+                // loss — so nothing is fabricated. Past MaxConcealFrames it is a stall
+                // or a genuine pause; the counter path makes the same call.
+                long med = st.MedianDelta();
+                if (med >= 4)
+                {
+                    int g = (int)Math.Round(elapsed / (double)med) - 1;
+                    if (g >= 1 && g <= MaxConcealFrames) lost = g;
+                }
+            }
+
+            var dec = st.Dec;
+            // 5760 samples = Opus' documented minimum safe output buffer (120ms).
+            // The old 2048 silently refused 60ms packets from peers whose mic had
+            // merged buffers under load.
+            var buf = new float[5760];
+
+            if (lost > 0 && frame > 0)
+            {
+                // Concealment is best effort — it must never cost us the real packet
+                // that just arrived, so it gets its own failure boundary.
+                try
+                {
+                    // PLC synthesises the gap frames this packet cannot carry. On the
+                    // counter path the last slot belongs to inband FEC — the current
+                    // packet carries a real low-rate copy of the frame right before
+                    // it — so only lost-1 frames are extrapolated. The relay path has
+                    // no FEC to read: relayed frames come from a Relay-mode encoder
+                    // with inband FEC off, and Concentus 2.2.2 decodes fec=true on
+                    // such packets to garbage (verified: cosine −0.14 against the
+                    // true frame, no exception) instead of reporting anything — so
+                    // every lost frame there is concealed with PLC alone.
+                    int plc = hasCounter ? lost - 1 : lost;
+                    for (int i = 0; i < plc; i++)
+                    {
+                        int p = dec.Decode(default, buf, frame, false);
+                        if (p > 0) _context.OnAudioFrameReceived(clientId, Slice(buf, p), p);
+                    }
+                    string how = "PLC";
+                    if (hasCounter)
+                    {
+                        // Recover the last missing frame for real from this packet's
+                        // FEC copy. If that fails for any reason (no FEC data, odd
+                        // frame size, decoder complaint), conceal the slot too — a
+                        // failed FEC attempt must leave a synthesised frame, never a
+                        // hole in the middle of the recovered run.
+                        bool fecOk = false;
+                        try
+                        {
+                            int f = dec.Decode(opus, buf, frame, true);
+                            if (f > 0)
+                            {
+                                _context.OnAudioFrameReceived(clientId, Slice(buf, f), f);
+                                fecOk = true;
+                            }
+                        }
+                        catch { /* falls through to the PLC below */ }
+                        if (!fecOk)
+                        {
+                            int p = dec.Decode(default, buf, frame, false);
+                            if (p > 0) _context.OnAudioFrameReceived(clientId, Slice(buf, p), p);
+                        }
+                        how = fecOk ? "FEC" : "FEC-fail→PLC";
+                    }
+                    // First couple of events per peer only — this is how "FEC never
+                    // fires / relay never conceals" claims get settled from a log.
+                    if (st.ConcealLogged < 2)
+                    {
+                        st.ConcealLogged++;
+                        InterstellarPlugin.Logger.LogInfo(
+                            $"[Srv] Conceal cid={clientId} lost={lost} {(hasCounter ? "P2P " : "Relay ")}{how}");
+                    }
+                }
+                catch { /* the plain decode below still runs */ }
+            }
+
             int n = dec.Decode(opus, buf, buf.Length);
-            _context.OnAudioFrameReceived(clientId, buf, n);
+            if (n > 0) _context.OnAudioFrameReceived(clientId, buf, n);
         }
         catch { if (_decodeErrors.Add(clientId)) InterstellarPlugin.Logger.LogWarning("[Srv] Dec " + clientId); }
+    }
+
+    /// <summary>Copy the first <paramref name="len"/> samples out of a decode buffer:
+    /// the mixer keeps what it is handed, so concealed frames must not alias the
+    /// buffer the next decode overwrites.</summary>
+    static float[] Slice(float[] src, int len)
+    {
+        var a = new float[len];
+        Array.Copy(src, a, len);
+        return a;
+    }
+
+    /// <summary>Media arrives on the P2P socket — decode it exactly like the old
+    /// websocket frames, but refresh the peer's liveness stamp on a channel that
+    /// no longer carries their control traffic. The frame counter rides along so a
+    /// UDP loss is concealed instead of heard as a click.</summary>
+    void OnP2pAudio(int clientId, byte[] opus, uint counter)
+    {
+        NotePeerAlive(clientId);
+        DecodeOpus(clientId, opus, counter, true);
+    }
+
+    /// <summary>P2P signalling out. Rides the existing "signal" event, which every
+    /// BCL-compatible voice server relays verbatim between two clients — so no
+    /// server change is needed for any of this.</summary>
+    void SendP2pSignal(string sid, string json)
+    {
+        var payload = "P2P:" + Convert.ToBase64String(Encoding.UTF8.GetBytes(json));
+        Emit("signal", new { to = sid, data = payload });
     }
 
     async void SendRaw(string data)
@@ -526,6 +761,9 @@ internal class ServerConnection : IConnectionContext, IDisposable
         // to leave the mic state out of sync on both ends.
         Emit("VAD", !_lastMute);
         if (_localRadio) BroadcastRadio(true);
+        // Any HELLO that went out while the socket was down is lost for good —
+        // re-announce ourselves now that signalling actually works.
+        _p2p?.ResendHellos();
     }
 
     void BroadcastRadio(bool radio)
@@ -554,8 +792,15 @@ internal class ServerConnection : IConnectionContext, IDisposable
     {
         foreach (var kv in _peers)
             if (kv.Key != sid && kv.Value.clientId == cid)
+            {
                 _peers.TryRemove(kv.Key, out _);
+                // Forgetting only the map entry left the P2P session for the dead socket
+                // alive: it kept re-punching candidates nobody answers and SendAll still
+                // aimed sealed frames at it (the mixed-transport one-way-audio session).
+                _p2p?.RemovePeer(kv.Key);
+            }
         _peers[sid] = (pid, cid);
+        _p2p?.AddPeer(sid, cid);
         // Keep an existing beat timer: a peer that reconnected under a new sid
         // is the same live client, and resetting would delay staleness detection.
         _peerBeat.TryAdd(cid, (Environment.TickCount, Environment.TickCount));
@@ -696,12 +941,16 @@ internal class ServerConnection : IConnectionContext, IDisposable
 
     void EmitTxFrames()
     {
-        while (_txAccumLen >= 480)
+        // Fixed 20ms frames. The old ladder emitted whatever the accumulator held
+        // (40/60ms under a slow mic callback), which is exactly the granularity a
+        // single UDP loss wipes out — one lost packet cost a whole 40ms of speech.
+        // At 960 samples a drop is 20ms, Opus' inband FEC is built around 20ms
+        // frames, and the receiver's PLC/FEC arithmetic knows the duration exactly.
+        // Cost is one extra frame per 40ms of audio (~8% more framing bytes), which
+        // the relay server's per-second budget already covers.
+        while (_txAccumLen >= 960)
         {
-            int frame = _txAccumLen >= 2880 ? 2880
-                      : _txAccumLen >= 1920 ? 1920
-                      : _txAccumLen >= 960 ? 960
-                      : 480;
+            const int frame = 960;
             try
             {
                 int n = _encoder!.Encode(_txAccum, frame, _encBuf, _encBuf.Length);
@@ -709,9 +958,7 @@ internal class ServerConnection : IConnectionContext, IDisposable
                 {
                     var opus = new byte[n];
                     Buffer.BlockCopy(_encBuf, 0, opus, 0, n);
-                    var b64 = Convert.ToBase64String(opus);
-                    foreach (var (sid, _) in _peers)
-                        Emit("signal", new { to = sid, data = b64 });
+                    SendFrame(opus);
                     Interlocked.Increment(ref _txFrames);
                 }
             }
@@ -729,12 +976,68 @@ internal class ServerConnection : IConnectionContext, IDisposable
         }
     }
 
+    /// <summary>Route one encoded frame according to the snapshotted transport mode:
+    /// <b>Relay</b> — everything rides the server's "signal" event (the original
+    /// scheme, works with every BCL-compatible voice server as-is);
+    /// <b>P2P</b> — direct UDP only; a peer without a validated path stays silent;
+    /// <b>Auto</b> — per peer: direct when a validated path exists, server relay
+    /// when the hole punch has not produced one, so a failed punch degrades to
+    /// relayed audio instead of silence. Exactly one path is used per peer, so a
+    /// frame is never sent twice.</summary>
+    void SendFrame(byte[] opus)
+    {
+        if (_transport == "Relay") { SendRelayFrame(opus, null); return; }
+        if (_transport == "P2P") { _p2p?.SendAll(opus); return; }
+
+        // Auto: pick the path peer by peer. The base64 payload is built at most
+        // once per frame and shared by every peer that needs the relay.
+        string? payload = null;
+        foreach (var kv in _peers)
+        {
+            if (_p2p != null && _p2p.TrySendTo(kv.Key, opus)) continue;
+            payload ??= Convert.ToBase64String(opus);
+            Emit("signal", new { to = kv.Key, data = payload });
+        }
+    }
+
+    /// <summary>Server relay of one media frame: base64 Opus on the "signal"
+    /// event, either broadcast to every peer (<paramref name="onlySid"/> null)
+    /// or to a single peer.</summary>
+    void SendRelayFrame(byte[] opus, string? onlySid)
+    {
+        if (_peers.IsEmpty) return;
+        string payload = Convert.ToBase64String(opus);
+        if (onlySid != null) { Emit("signal", new { to = onlySid, data = payload }); return; }
+        foreach (var kv in _peers)
+            Emit("signal", new { to = kv.Key, data = payload });
+    }
+
     Concentus.IOpusEncoder? _encoder; byte[] _encBuf = new byte[2048];
     void EnsureEncoder()
     {
         if (_encoder != null) return;
         _encoder = Concentus.OpusCodecFactory.CreateEncoder(48000, 1, Concentus.Enums.OpusApplication.OPUS_APPLICATION_VOIP);
-        _encoder.Bitrate = 64000; _encoder.UseVBR = true; _encoder.UseInbandFEC = true;
+        _encoder.UseVBR = true;
+        if (_transport == "Relay")
+        {
+            // Relayed frames ride TCP — nothing is lost on the wire, so spending
+            // ~15% of the payload on inband FEC would protect against an event that
+            // cannot happen here. Every bit goes to audio instead, and the relayed
+            // traffic shrinks by the same amount.
+            _encoder.Bitrate = 64000;
+            _encoder.UseInbandFEC = false;
+            _encoder.PacketLossPercent = 0;
+        }
+        else
+        {
+            // Direct UDP (and Auto's direct peers) can drop frames. FEC bits are
+            // cheap insurance: the receiver rebuilds the lost frame from the next
+            // packet's copy instead of playing a hole. P2P also spends the bitrate
+            // the relay would have carried — it goes straight to the peer.
+            _encoder.Bitrate = _transport == "P2P" ? 96000 : 64000;
+            _encoder.UseInbandFEC = true;
+            _encoder.PacketLossPercent = 15;
+        }
     }
 
     public async Task PublishLobby(string code, PublicLobbyManager.LobbyInfo info)
@@ -770,6 +1073,8 @@ internal class ServerConnection : IConnectionContext, IDisposable
     public void Disconnect()
     {
         _disposed = true;
+        try { _p2p?.Dispose(); } catch { }
+        _p2p = null;
         _pingTimer?.Dispose();
         _cts?.Cancel();
         var sws = _sws; _sws = null;

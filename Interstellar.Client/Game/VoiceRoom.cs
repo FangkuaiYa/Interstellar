@@ -52,11 +52,14 @@ public class VoiceRoom
     private static readonly bool IsAndroid = Application.platform == RuntimePlatform.Android;
     public static VoiceRoom Start(string region, string roomCode)
     {
+        // A menu mic test holds its own capture handle; release it before the room
+        // opens the same device, so only one capture is ever live.
+        VoiceDeviceTest.StopMicTest();
         Current?.Close();
         Current = new VoiceRoom(region, roomCode);
-        // Every path that reaches here (InterstellarRoomDriver, the F1 refresh
-        // button, the Android join watchdog) must keep the user's mic/speaker
-        // choice — otherwise refreshing the room silently unmutes the mic.
+        // Every path that reaches here (InterstellarRoomDriver, the settings
+        // panel's Refresh button, the Android join watchdog) must keep the user's
+        // mic/speaker choice — otherwise refreshing the room silently unmutes the mic.
         VoiceButtons.ApplyMicState();
         VoiceButtons.ApplySpeakerState();
         return Current;

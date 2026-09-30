@@ -104,7 +104,7 @@ public static class InterstellarHudState
         if (_serverInfoText != null) return;
         var canvas = VCUiKit.EnsureCanvas();
         _serverInfoText = VCUiKit.CreateText(canvas.transform, "VC_ServerInfo", "",
-            Vector2.zero, new Vector2(900f, 60f), 30f, new Color(0.6f, 0.85f, 0.6f),
+            Vector2.zero, new Vector2(1400f, 36f), 18f, new Color(0.6f, 0.85f, 0.6f),
             align: TextAlignmentOptions.BottomLeft);
         Object.DontDestroyOnLoad(_serverInfoText.gameObject);
         var rt = _serverInfoText.rectTransform;
@@ -130,18 +130,41 @@ public static class InterstellarHudState
         int cur = 0;
         foreach (var _ in room.AllClients) cur++;
         int opt = VoiceServerState.OptimalPlayers;
+        string transport = "  ·  " + TransportLabel();
+        var ok = new Color(0.6f, 0.85f, 0.6f);
+        var warn = new Color(1f, 0.65f, 0.2f);
+
+        // P2P direct pushes no media through the server, so printing its name reads as
+        // if voice still went through it: lead with the transport instead. The roster
+        // count stays (still your room), and so does the capacity warning — the server
+        // is still what admits new signups.
+        if (VoiceConfig.TransportMode == "P2P")
+        {
+            _serverInfoText.text = TransportLabel() + (opt > 0 ? "  " + cur + "/" + opt : "  " + cur);
+            _serverInfoText.color = opt > 0 && cur >= opt ? warn : ok;
+            return;
+        }
 
         if (opt > 0)
         {
-            _serverInfoText.text = "Interstellar Server: " + serverName + "  " + cur + "/" + opt;
-            _serverInfoText.color = opt > 0 && cur >= opt ? new Color(1f, 0.65f, 0.2f) : new Color(0.6f, 0.85f, 0.6f);
+            _serverInfoText.text = TranslationHelper.Get("vc.hud.serverPrefix", "Interstellar Server: ") + serverName + "  " + cur + "/" + opt + transport;
+            _serverInfoText.color = cur >= opt ? warn : ok;
         }
         else
         {
-            _serverInfoText.text = "Interstellar Server: " + serverName + "  " + cur;
-            _serverInfoText.color = new Color(0.6f, 0.85f, 0.6f);
+            _serverInfoText.text = TranslationHelper.Get("vc.hud.serverPrefix", "Interstellar Server: ") + serverName + "  " + cur + transport;
+            _serverInfoText.color = ok;
         }
     }
+
+    /// <summary>Current media transport, in the panel's own words — so the HUD and the
+    /// settings row can never drift apart.</summary>
+    private static string TransportLabel() => VoiceConfig.TransportMode switch
+    {
+        "P2P" => TranslationHelper.Get("vc.settings.transport.p2p", "P2P direct"),
+        "Relay" => TranslationHelper.Get("vc.settings.transport.relay", "Server relay"),
+        _ => TranslationHelper.Get("vc.settings.transport.auto", "Auto (P2P + relay)"),
+    };
 
     private static string ResolveServerName(string url)
     {

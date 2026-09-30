@@ -4,6 +4,29 @@ using UnityEngine;
 
 namespace Interstellar.Voice;
 
+/// <summary>Modifier half of a rebindable hotkey chord. Each bit is a key *class*
+/// (either side of Ctrl counts), so a chord captured with LeftCtrl still fires on
+/// RightCtrl — the way every OS shortcut list works.</summary>
+[System.Flags]
+public enum VoiceChordMods
+{
+    None = 0,
+    Ctrl = 1,
+    Shift = 2,
+    Alt = 4,
+    Cmd = 8,
+}
+
+/// <summary>The five rebindable actions, each backed by one VoiceChat.Keybinds entry.</summary>
+public enum VoiceChord
+{
+    SettingsPanel,
+    PublicLobby,
+    PlayerVolume,
+    CycleMic,
+    ToggleSpeaker,
+}
+
 /// <summary>
 /// BCL-compatible voice chat configuration.
 /// Settings structure mirrors the BetterCrewLink independent client.
@@ -44,6 +67,52 @@ public static class VoiceConfig
         return url.Length > 25 ? url[..25] + "..." : url;
     }
 
+    // ── P2P ─────────────────────────────────────────────────
+    /// <summary>
+    /// Comma-separated STUN list used to discover the public (server-reflexive)
+    /// address for hole punching. Whichever server answers first provides the
+    /// candidate — a pile of them is used because some are unreachable from any
+    /// given network.
+    ///
+    /// Deliberately config-file only: it never appears in the settings panel, so a
+    /// private/on-prem STUN endpoint can be dropped into the local cfg without it
+    /// ever ending up in a repository.
+    /// </summary>
+    public static string P2PStunServers => _p2pStun?.Value ?? DefaultStunServers;
+
+    /// <summary>
+    /// How media reaches the other players:
+    ///   Auto  — direct P2P first; any peer without a validated UDP path is served
+    ///           over the voice server instead, so a failed hole punch never means
+    ///           silence;
+    ///   P2P   — direct only, never the server (the strict mode);
+    ///   Relay — everything through the voice server (the original scheme).
+    ///
+    /// The mode is snapshotted when a room connects; the settings panel
+    /// reconnects the room after a change, the same way a server switch does.
+    /// </summary>
+    public static string TransportMode
+    {
+        get { var v = _transportMode?.Value; return v is "Auto" or "Relay" ? v : "P2P"; }
+        set { if (_transportMode != null) _transportMode.Value = value; }
+    }
+
+    private const string DefaultStunServers =
+        "stun:stun.l.google.com:19302," +
+        "stun:stun1.l.google.com:19302," +
+        "stun:stun2.l.google.com:19302," +
+        "stun:stun.cloudflare.com:3478," +
+        "stun:global.stun.twilio.com:3478," +
+        "stun:stun.qq.com:3478," +
+        "stun:stun.miwifi.com:3478," +
+        "stun:stun.synology.com:3478," +
+        "stun:stun.voipgate.com:3478," +
+        "stun:stun.sipgate.net:3478," +
+        "stun:stun.ekiga.net:3478," +
+        "stun:stun.counterpath.com:3478," +
+        "stun:stun.ideasip.com:3478," +
+        "stun:stun.sonetel.net:3478";
+
     // ── Audio devices ──────────────────────────────────────
     public static string MicrophoneDevice => _mic?.Value ?? "";
     public static string SpeakerDevice => _speaker?.Value ?? "";
@@ -58,6 +127,15 @@ public static class VoiceConfig
     {
         get { float v = _micVol?.Value ?? 1f; return float.IsFinite(v) ? Math.Clamp(v, 0.1f, 3f) : 1f; }
         set { if (_micVol != null && float.IsFinite(value)) _micVol.Value = value; }
+    }
+
+    // ── UI ─────────────────────────────────────────────────
+    /// <summary>Scale multiplier for the bottom-left mic/speaker buttons, background
+    /// plate included: 1 is the stock size, 0.5 half, 2 double.</summary>
+    public static float HotkeyButtonScale
+    {
+        get { float v = _hotkeyBtnScale?.Value ?? 1f; return float.IsFinite(v) ? Math.Clamp(v, 0.5f, 2f) : 1f; }
+        set { if (_hotkeyBtnScale != null && float.IsFinite(value)) _hotkeyBtnScale.Value = value; }
     }
 
     // ── Audio processing ───────────────────────────────────
@@ -296,6 +374,210 @@ public static class VoiceConfig
         }
     }
 
+    // ── Keybinds ───────────────────────────────────────────
+    // Persisted as a chord string: a bare KeyCode ("F1") or modifiers joined with '+'
+    // ("LeftControl+M"). Legacy single-key values parse unchanged, and every hotkey
+    // reader polls the whole chord through ChordDown — so a binding only fires when all
+    // of the modifiers it was captured with are held, and a cleared binding never fires.
+    /// <summary>Opens the voice settings panel.</summary>
+    public static KeyCode SettingsKey
+    {
+        get => ReadKey(_settingsKey, KeyCode.F11);
+        set => WriteKey(_settingsKey, value);
+    }
+    /// <summary>Opens the public lobby window.</summary>
+    public static KeyCode PublicLobbyKey
+    {
+        get => ReadKey(_publicLobbyKey, KeyCode.F2);
+        set => WriteKey(_publicLobbyKey, value);
+    }
+    /// <summary>Opens the per-player volume window.</summary>
+    public static KeyCode PlayerVolumeKey
+    {
+        get => ReadKey(_playerVolumeKey, KeyCode.F3);
+        set => WriteKey(_playerVolumeKey, value);
+    }
+    /// <summary>Cycles the microphone mute state (and the impostor radio channel).</summary>
+    public static KeyCode CycleMicKey
+    {
+        get => ReadKey(_cycleMicKey, KeyCode.M);
+        set => WriteKey(_cycleMicKey, value);
+    }
+    /// <summary>Mutes and unmutes everything you hear.</summary>
+    public static KeyCode ToggleSpeakerKey
+    {
+        get => ReadKey(_toggleSpeakerKey, KeyCode.N);
+        set => WriteKey(_toggleSpeakerKey, value);
+    }
+
+    /// <summary>True on the frame the binding's key goes down with every modifier of its
+    /// chord held. All five hotkey readers go through here, once per frame each, so the
+    /// parsed chord is cached and only re-parsed when the cfg value actually differs.</summary>
+    public static bool ChordDown(VoiceChord which)
+    {
+        int i = (int)which;
+        if ((uint)i >= (uint)_chordKey.Length) return false;
+
+        string? raw = EntryFor(which)?.Value;
+        if (!_chordKnown[i] || !string.Equals(_chordRaw[i], raw, StringComparison.Ordinal))
+        {
+            ParseChord(raw, FallbackFor(which), out var k, out var m);
+            _chordRaw[i] = raw;
+            _chordKey[i] = k;
+            _chordMods[i] = m;
+            _chordKnown[i] = true;
+        }
+
+        if (_chordKey[i] == KeyCode.None) return false;
+        return ModsHeld(_chordMods[i]) && UnityEngine.Input.GetKeyDown(_chordKey[i]);
+    }
+
+    /// <summary>Stored chord exactly as written in cfg, e.g. <c>LeftControl+M</c>. An
+    /// entry that was never written reports the shipped default instead of nothing.</summary>
+    public static string GetChord(VoiceChord which)
+    {
+        var raw = EntryFor(which)?.Value;
+        return string.IsNullOrWhiteSpace(raw) ? FallbackFor(which).ToString() : raw;
+    }
+
+    /// <summary>Writes a chord (modifiers first, then the key). The cache invalidates
+    /// itself on the next read by comparing the raw cfg value.</summary>
+    public static void SetChord(VoiceChord which, string chord)
+    {
+        var e = EntryFor(which);
+        if (e == null) return;
+        e.Value = string.IsNullOrWhiteSpace(chord) ? KeyCode.None.ToString() : chord.Trim();
+    }
+
+    /// <summary>Unbinds an action: no key, no modifiers, no accidental firing.</summary>
+    public static void ClearChord(VoiceChord which) => SetChord(which, KeyCode.None.ToString());
+
+    private static ConfigEntry<string>? EntryFor(VoiceChord which) => which switch
+    {
+        VoiceChord.SettingsPanel => _settingsKey,
+        VoiceChord.PublicLobby => _publicLobbyKey,
+        VoiceChord.PlayerVolume => _playerVolumeKey,
+        VoiceChord.CycleMic => _cycleMicKey,
+        VoiceChord.ToggleSpeaker => _toggleSpeakerKey,
+        _ => null,
+    };
+
+    private static KeyCode FallbackFor(VoiceChord which) => which switch
+    {
+        VoiceChord.SettingsPanel => KeyCode.F11,
+        VoiceChord.PublicLobby => KeyCode.F2,
+        VoiceChord.PlayerVolume => KeyCode.F3,
+        VoiceChord.CycleMic => KeyCode.M,
+        VoiceChord.ToggleSpeaker => KeyCode.N,
+        _ => KeyCode.None,
+    };
+
+    /// <summary>Splits <c>LeftControl+M</c> into the key that must be pressed and the
+    /// modifier classes that must be held. Junk tokens from a hand-edited cfg are
+    /// ignored; an entry that holds nothing parseable falls back to the default; and a
+    /// lone modifier ("LeftControl") counts as the key itself rather than a requirement.</summary>
+    private static void ParseChord(string? raw, KeyCode fallback, out KeyCode key, out VoiceChordMods mods)
+    {
+        key = fallback;
+        mods = VoiceChordMods.None;
+        if (string.IsNullOrWhiteSpace(raw)) return;
+
+        KeyCode lastPlain = KeyCode.None, lastAny = KeyCode.None;
+        bool sawPlain = false, sawAny = false;
+        var seen = VoiceChordMods.None;
+
+        foreach (var part in raw.Split('+'))
+        {
+            var tok = part.Trim();
+            if (tok.Length == 0) continue;
+            if (!Enum.TryParse(tok, true, out KeyCode kc)) continue;
+            lastAny = kc;
+            sawAny = true;
+            var m = ModOf(kc);
+            if (m == VoiceChordMods.None) { lastPlain = kc; sawPlain = true; }
+            else seen |= m;
+        }
+
+        mods = seen;
+        if (sawPlain) { key = lastPlain; mods &= ~ModOf(lastPlain); }
+        else if (sawAny) { key = lastAny; mods &= ~ModOf(lastAny); }
+    }
+
+    /// <summary>The modifier class a KeyCode belongs to (Ctrl/Shift/Alt/Cmd), or None.
+    /// Public because the rebind row folds held modifiers into the chord it writes, and
+    /// needs this to keep a modifier-bound-as-key from also demanding itself as a hold.
+    /// </summary>
+    public static VoiceChordMods ModOf(KeyCode k)
+    {
+        if (k == KeyCode.LeftControl || k == KeyCode.RightControl) return VoiceChordMods.Ctrl;
+        if (k == KeyCode.LeftShift || k == KeyCode.RightShift) return VoiceChordMods.Shift;
+        if (k == KeyCode.LeftAlt || k == KeyCode.RightAlt || k == KeyCode.AltGr) return VoiceChordMods.Alt;
+        if (k == KeyCode.LeftCommand || k == KeyCode.RightCommand
+            || k == KeyCode.LeftWindows || k == KeyCode.RightWindows) return VoiceChordMods.Cmd;
+        return VoiceChordMods.None;
+    }
+
+    /// <summary>Modifier classes held on this very frame — the rebind row captures these
+    /// into the chord it persists, so pressing Ctrl+M writes <c>LeftControl+M</c> and the
+    /// binding only ever fires with Ctrl down. Left/right of the same class count once.</summary>
+    public static VoiceChordMods HeldMods()
+    {
+        var mods = VoiceChordMods.None;
+        if (UnityEngine.Input.GetKey(KeyCode.LeftControl) || UnityEngine.Input.GetKey(KeyCode.RightControl))
+            mods |= VoiceChordMods.Ctrl;
+        if (UnityEngine.Input.GetKey(KeyCode.LeftShift) || UnityEngine.Input.GetKey(KeyCode.RightShift))
+            mods |= VoiceChordMods.Shift;
+        if (UnityEngine.Input.GetKey(KeyCode.LeftAlt) || UnityEngine.Input.GetKey(KeyCode.RightAlt)
+            || UnityEngine.Input.GetKey(KeyCode.AltGr))
+            mods |= VoiceChordMods.Alt;
+        if (UnityEngine.Input.GetKey(KeyCode.LeftCommand) || UnityEngine.Input.GetKey(KeyCode.RightCommand)
+            || UnityEngine.Input.GetKey(KeyCode.LeftWindows) || UnityEngine.Input.GetKey(KeyCode.RightWindows))
+            mods |= VoiceChordMods.Cmd;
+        return mods;
+    }
+
+    private static bool ModsHeld(VoiceChordMods mods)
+    {
+        if (mods == VoiceChordMods.None) return true;
+        if ((mods & VoiceChordMods.Ctrl) != 0
+            && !(UnityEngine.Input.GetKey(KeyCode.LeftControl) || UnityEngine.Input.GetKey(KeyCode.RightControl)))
+            return false;
+        if ((mods & VoiceChordMods.Shift) != 0
+            && !(UnityEngine.Input.GetKey(KeyCode.LeftShift) || UnityEngine.Input.GetKey(KeyCode.RightShift)))
+            return false;
+        if ((mods & VoiceChordMods.Alt) != 0
+            && !(UnityEngine.Input.GetKey(KeyCode.LeftAlt) || UnityEngine.Input.GetKey(KeyCode.RightAlt)
+                 || UnityEngine.Input.GetKey(KeyCode.AltGr)))
+            return false;
+        if ((mods & VoiceChordMods.Cmd) != 0
+            && !(UnityEngine.Input.GetKey(KeyCode.LeftCommand) || UnityEngine.Input.GetKey(KeyCode.RightCommand)
+                 || UnityEngine.Input.GetKey(KeyCode.LeftWindows) || UnityEngine.Input.GetKey(KeyCode.RightWindows)))
+            return false;
+        return true;
+    }
+
+    /// <summary>Resolves a stored chord to its main key for the legacy KeyCode-shaped
+    /// properties; anything unparseable (or not written yet) falls back to the shipped
+    /// default so a hand-edited cfg can never leave a window without a key to open it.</summary>
+    private static KeyCode ReadKey(ConfigEntry<string>? entry, KeyCode fallback)
+    {
+        ParseChord(entry?.Value, fallback, out var key, out _);
+        return key;
+    }
+
+    /// <summary>Legacy single-key write: keeps the key and drops any modifiers. The
+    /// rebind row writes full chords through <see cref="SetChord"/> instead.</summary>
+    private static void WriteKey(ConfigEntry<string>? entry, KeyCode key)
+    {
+        if (entry != null) entry.Value = key.ToString();
+    }
+
+    // Parsed chord cache, indexed by VoiceChord (raw-value compare invalidates it).
+    private static readonly string?[] _chordRaw = new string?[5];
+    private static readonly KeyCode[] _chordKey = new KeyCode[5];
+    private static readonly VoiceChordMods[] _chordMods = new VoiceChordMods[5];
+    private static readonly bool[] _chordKnown = new bool[5];
+
     // ── Device caches ──────────────────────────────────────
     public static List<string> MicrophoneDevices { get; } = new();
     public static List<string> SpeakerDevices { get; } = new();
@@ -306,6 +588,7 @@ public static class VoiceConfig
     private static ConfigEntry<string>? _customUrl;
     private static ConfigEntry<string>? _mic, _speaker;
     private static ConfigEntry<float>? _masterVol, _micVol;
+    private static ConfigEntry<float>? _hotkeyBtnScale;
     private static ConfigEntry<bool>? _noiseSuppression, _echoCancellation;
     private static ConfigEntry<bool>? _vadEnabled;
     private static ConfigEntry<float>? _hostMaxDist;
@@ -316,6 +599,13 @@ public static class VoiceConfig
     private static ConfigEntry<string>? _publicTitle, _publicLang;
     private static ConfigEntry<string>? _savedPlayerVolumes;
     private static ConfigEntry<string>? _savedPlayerAutoVolume;
+    private static ConfigEntry<string>? _p2pStun;
+    private static ConfigEntry<string>? _transportMode;
+    private static ConfigEntry<string>? _settingsKey, _publicLobbyKey, _playerVolumeKey;
+    /// <summary>One-shot marker: the SettingsPanel default moved F1 -> F11 once, so a cfg
+    /// written before that move is migrated exactly once and never touched again.</summary>
+    private static ConfigEntry<bool>? _settingsKeyMigrated;
+    private static ConfigEntry<string>? _cycleMicKey, _toggleSpeakerKey;
 
     private static bool _devicesCached;
 
@@ -369,6 +659,10 @@ public static class VoiceConfig
         _micVol = cfg.Bind("VoiceChat", "MicVolume", 1f,
             new ConfigDescription("Mic input volume", new AcceptableValueRange<float>(0.1f, 3f)));
 
+        _hotkeyBtnScale = cfg.Bind("VoiceChat", "HotkeyButtonScale", 1f,
+            new ConfigDescription("Bottom-left mic/speaker button size multiplier",
+                new AcceptableValueRange<float>(0.5f, 2f)));
+
         _noiseSuppression = cfg.Bind("VoiceChat", "NoiseSuppression", true);
         _echoCancellation = cfg.Bind("VoiceChat", "EchoCancellation", true);
         _vadEnabled = cfg.Bind("VoiceChat", "VADEnabled", true);
@@ -397,6 +691,40 @@ public static class VoiceConfig
         _savedPlayerVolumes = cfg.Bind("VoiceChat", "PlayerVolumes", "",
             "Per-player volume overrides (0%-200%), remembered by player name. Internal serialized format.");
         LoadPlayerVolumes();
+
+        _p2pStun = cfg.Bind("VoiceChat.P2P", "StunServers", DefaultStunServers,
+            "Comma-separated STUN servers for hole punching (stun:host:port). Append your own here.");
+
+        _transportMode = cfg.Bind("VoiceChat.P2P", "Transport", "P2P",
+            new ConfigDescription(
+                "Media transport: P2P = direct only (default); Auto = direct P2P with server-relay " +
+                "fallback; Relay = voice server relay only (original scheme).",
+                new AcceptableValueList<string>("Auto", "P2P", "Relay")));
+
+        _settingsKey = cfg.Bind("VoiceChat.Keybinds", "SettingsPanel", KeyCode.F11.ToString(),
+            "Key that opens the voice settings panel (and closes it again).");
+        _publicLobbyKey = cfg.Bind("VoiceChat.Keybinds", "PublicLobby", KeyCode.F2.ToString(),
+            "Key that jumps to the public lobby list inside the settings panel.");
+        _playerVolumeKey = cfg.Bind("VoiceChat.Keybinds", "PlayerVolume", KeyCode.F3.ToString(),
+            "Key that jumps to the per-player volume list inside the settings panel.");
+        _cycleMicKey = cfg.Bind("VoiceChat.Keybinds", "CycleMic", KeyCode.M.ToString(),
+            "Key that cycles the microphone mute state (and the impostor radio channel).");
+        _toggleSpeakerKey = cfg.Bind("VoiceChat.Keybinds", "ToggleSpeaker", KeyCode.N.ToString(),
+            "Key that mutes and unmutes everything you hear.");
+
+        // The shipped default for the panel hotkey moved F1 -> F11. BepInEx wrote the old
+        // default into the cfg the first time it was bound, so an untouched file still
+        // holds "F1" and would keep opening the panel on F1 forever — migrate that one
+        // value exactly once. A chord bound to anything else (including a deliberate,
+        // hand-edited F1) is left alone from the second run onward.
+        _settingsKeyMigrated = cfg.Bind("VoiceChat.Keybinds", "PanelHotkeyDefaultMigrated", false,
+            "Internal: the SettingsPanel hotkey default has been migrated from F1 to F11.");
+        if (!_settingsKeyMigrated.Value)
+        {
+            if (string.Equals(_settingsKey.Value, KeyCode.F1.ToString(), StringComparison.OrdinalIgnoreCase))
+                _settingsKey.Value = KeyCode.F11.ToString();
+            _settingsKeyMigrated.Value = true;
+        }
 
         ApplyLocalHostSettingsToSynced();
     }

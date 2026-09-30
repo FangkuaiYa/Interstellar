@@ -188,7 +188,7 @@ internal class BufferedSampleProvider : ISampleProvider
 
             if (ReadFully)
             {
-                Array.Clear(buffer, offset + num, count - num);
+                SampleFill.Clear(buffer, offset + num, count - num);
                 num = count;
             }
         }

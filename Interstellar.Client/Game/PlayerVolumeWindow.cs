@@ -1,322 +1,159 @@
-#pragma warning disable CS8602, CS8603, CS8618
+#pragma warning disable CS8600, CS8602, CS8603, CS8618
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using TMPro;
 using UnityEngine;
-using UnityEngine.UI;
-using static Interstellar.Voice.TranslationHelper;
-using Object = UnityEngine.Object;
+using Interstellar.UI;
 
 namespace Interstellar.Voice;
 
+/// <summary>
+/// Per-player volume host. The standalone F3 window is gone: F3 opens the settings
+/// panel on the PLAYER VOLUME rail entry instead, and the panel builds the rows itself
+/// through <see cref="BuildRow"/>. What stays here is the data path — the player
+/// snapshot, the slider/AUTO-chip construction (manual edit still wins over auto) and
+/// the live meter feed, which the panel drives from its own tick while its rows exist.
+/// </summary>
 public class PlayerVolumeWindow : MonoBehaviour
 {
     public PlayerVolumeWindow(System.IntPtr ptr) : base(ptr) { }
 
     public static PlayerVolumeWindow? Instance { get; private set; }
+
+    /// <summary>True while the settings panel is showing this category — kept for
+    /// VCInputBlockPatch, which counts any of the voice windows as "block the game".</summary>
     public bool ShowWindow { get; private set; }
 
-    private const KeyCode ToggleKey = KeyCode.F3;
+    private const float VMin = 0f;
+    private const float VMax = 2f;
+    private const float SpeakingThreshold = 0.01f;
 
-    private const float WinW = 860f;
-    private const float WinH = 760f;
-    private const float TitleBarH = 64f;
-    private const float RowH = 68f;
-    private const float ContentW = WinW - 96f;
-    private const float ContentRight = ContentW / 2f - 40f;
-
-    private bool _isAndroid => Application.platform == RuntimePlatform.Android;
-    private float F(float px) => _isAndroid ? px * 1.28f : px;
-
-    private GameObject _uiRoot;
-    private RectTransform _winRt;
-    private Canvas _canvas;
-    private ScrollRect _scroll;
-    private RectTransform _content;
-
-    private bool _built;
-    private float _refreshTimer;
-
-    void Awake()
-    {
-        Instance = this;
-    }
+    void Awake() => Instance = this;
 
     void OnDestroy()
     {
         if (Instance == this) Instance = null;
-        if (_uiRoot != null) Object.Destroy(_uiRoot);
     }
 
     void Update()
     {
-        if (Input.GetKeyDown(ToggleKey)) Toggle();
-        if (ShowWindow && Input.GetKeyDown(KeyCode.Escape)) Close();
-
-        if (ShowWindow)
-        {
-            _refreshTimer -= Time.deltaTime;
-            if (_refreshTimer <= 0f)
-            {
-                _refreshTimer = 0.5f;
-                // Rebuild only when the player list actually changed —
-                // rebuilding on a timer destroyed the slider under the
-                // user's finger every 0.5s and killed active drags.
-                string sig = BuildPlayersSignature();
-                if (sig != _playersSig) RebuildContent();
-            }
-        }
-    }
-
-    private string _playersSig = "";
-
-    private string BuildPlayersSignature()
-    {
-        try
-        {
-            var room = VoiceRoom.Current;
-            if (room == null) return "";
-            var sb = new System.Text.StringBuilder();
-            foreach (var c in room.AllClients)
-            {
-                if (c.PlayerId == byte.MaxValue) continue;
-                sb.Append(c.ClientId).Append(':').Append(c.PlayerId).Append(':')
-                  .Append(c.PlayerName).Append(':').Append(c.IsMapped ? 1 : 0).Append(';');
-            }
-            return sb.ToString();
-        }
-        catch
-        {
-            // Player list can be mutated by the network thread mid-enumeration;
-            // report "unchanged" so we simply retry on the next tick.
-            return _playersSig;
-        }
+        // F3: open the settings panel on this category (close it when already there).
+        // Standard chord guard: while a rebinding row listens — or until the freshly
+        // bound key is released again — the keyboard belongs to that row alone.
+        if (!VoiceUiKit.SuppressGlobalHotkeys && VoiceConfig.ChordDown(VoiceChord.PlayerVolume))
+            Toggle();
     }
 
     public void Toggle()
     {
-        if (ShowWindow) Close(); else Open();
+        var win = VoiceSettingsWindow.Instance;
+        if (win == null) return;
+        if (win.ShowWindow && VoiceSettingsPanel.IsOnCategory(VoiceSettingsPanel.CatVolume))
+            win.Close();
+        else
+            win.OpenCategory(VoiceSettingsPanel.CatVolume);
     }
 
-    public void Open()
-    {
-        try
-        {
-            if (!_built) BuildUI();
-            if (_uiRoot == null)
-            {
-                InterstellarPlugin.Logger?.LogError("[VC] Player volume UI failed to build (_uiRoot is null).");
-                return;
-            }
-
-            try
-            {
-                var cam = Object.FindObjectOfType<Camera>();
-                if (cam != null && _canvas != null) _canvas.targetDisplay = cam.targetDisplay;
-            }
-            catch { }
-
-            // Avoid stacking multiple VC windows on top of each other.
-            try { VoiceSettingsWindow.Instance?.Close(); } catch { }
-            try { PublicLobbyWindow.Instance?.Close(); } catch { }
-
-            _uiRoot.SetActive(true);
-            ShowWindow = true;
-
-            var opt = Object.FindObjectOfType<OptionsMenuBehaviour>();
-            if (opt) opt.Close();
-
-            _refreshTimer = 0f;
-            RebuildContent();
-            if (_scroll != null) _scroll.verticalNormalizedPosition = 1f;
-        }
-        catch (Exception e)
-        {
-            InterstellarPlugin.Logger?.LogError($"[VC] Open player volume window failed: {e}");
-            _built = false;
-            _uiRoot = null;
-        }
-    }
-
-    public void Close()
-    {
-        ShowWindow = false;
-        if (_uiRoot != null) _uiRoot.SetActive(false);
-    }
+    /// <summary>Pushed by the settings panel whenever the rail moves.</summary>
+    public void SetPanelActive(bool active) => ShowWindow = active;
 
     // ========================================================
-    //  Window frame (built once)
+    //  Data path (unchanged) — owned by the settings panel rows
     // ========================================================
-    private void BuildUI()
+
+    /// <summary>Players in the current voice room, sorted exactly like the old window
+    /// listed them. Empty when there is no room; a concurrent mutation of AllClients
+    /// (network thread) is reported as "no players yet" and retried on the next tick.</summary>
+    internal static List<VCPlayer> SnapshotPlayers()
     {
-        if (_uiRoot != null) Object.Destroy(_uiRoot);
-        _canvas = VCUiKit.EnsureCanvas();
-
-        _uiRoot = new GameObject("VCPlayerVolumeUI");
-        _uiRoot.transform.SetParent(_canvas.transform, false);
-        var rootRt = _uiRoot.AddComponent<RectTransform>();
-        rootRt.anchorMin = Vector2.zero;
-        rootRt.anchorMax = Vector2.one;
-        rootRt.offsetMin = Vector2.zero;
-        rootRt.offsetMax = Vector2.zero;
-        _uiRoot.SetActive(false);
-
-        var dim = VCUiKit.CreateImage(_uiRoot.transform, "Dim", Vector2.zero, Vector2.zero, VCUiKit.PixelSprite, new Color(0f, 0f, 0f, 0.42f));
-        var dimRt = (RectTransform)dim.transform;
-        dimRt.anchorMin = Vector2.zero;
-        dimRt.anchorMax = Vector2.one;
-        dimRt.offsetMin = Vector2.zero;
-        dimRt.offsetMax = Vector2.zero;
-        var dimBtn = dim.gameObject.AddComponent<Button>();
-        dimBtn.transition = Selectable.Transition.None;
-        Action dimHandler = () => { try { Close(); } catch { } };
-        dimBtn.onClick.AddListener(dimHandler);
-
-        _winRt = VCUiKit.CreatePanel(_uiRoot.transform, "Window", new Vector2(WinW, WinH),
-            new Color(0.88f, 0.94f, 1f, 1f), new Color(0.07f, 0.10f, 0.16f, 0.97f), 6f);
-        _winRt.anchorMin = _winRt.anchorMax = new Vector2(0.5f, 0.5f);
-        _winRt.anchoredPosition = Vector2.zero;
-
-        BuildTitleBar(_winRt);
-        BuildScrollArea(_winRt);
-        _built = true;
-    }
-
-    private void BuildTitleBar(Transform win)
-    {
-        var title = VCUiKit.CreateText(win, "Title", Get("vc.playerVolume.title", "Player Volume"),
-            Vector2.zero, new Vector2(400f, 44f), F(28f), new Color(0.92f, 0.95f, 1f, 1f),
-            FontStyles.Bold, TextAlignmentOptions.Left);
-        var titleRt = (RectTransform)title.transform;
-        titleRt.anchorMin = new Vector2(0f, 0.5f);
-        titleRt.anchorMax = new Vector2(0f, 0.5f);
-        titleRt.pivot = new Vector2(0f, 0.5f);
-        titleRt.anchoredPosition = new Vector2(30f, WinH / 2f - TitleBarH / 2f);
-
-        var close = VCUiKit.CreateButton(win, "X", Vector2.zero, new Vector2(44f, 44f),
-            new Color(0.58f, 0.22f, 0.24f, 1f), () => Close(), F(24f));
-        var closeRt = (RectTransform)close.transform;
-        closeRt.anchorMin = closeRt.anchorMax = new Vector2(1f, 0.5f);
-        closeRt.anchoredPosition = new Vector2(-34f, WinH / 2f - TitleBarH / 2f);
-    }
-
-    private void BuildScrollArea(Transform win)
-    {
-        float topY = WinH / 2f - TitleBarH - 10f;
-        float bottomY = -WinH / 2f + 20f;
-        float viewH = topY - bottomY;
-
-        var viewport = VCUiKit.NewRect(win, "Viewport");
-        viewport.anchorMin = viewport.anchorMax = new Vector2(0.5f, 0.5f);
-        viewport.anchoredPosition = new Vector2(0f, (topY + bottomY) / 2f);
-        viewport.sizeDelta = new Vector2(ContentW + 20f, viewH);
-        viewport.gameObject.AddComponent<RectMask2D>();
-
-        _content = VCUiKit.NewRect(viewport, "Content");
-        _content.anchorMin = new Vector2(0f, 1f);
-        _content.anchorMax = new Vector2(0f, 1f);
-        _content.pivot = new Vector2(0f, 1f);
-        _content.anchoredPosition = Vector2.zero;
-        _content.sizeDelta = new Vector2(ContentW, 10f);
-
-        var bg = VCUiKit.CreateImage(_content, "ScrollBG", Vector2.zero, _content.sizeDelta, VCUiKit.PixelSprite, Color.clear);
-        var bgRt = bg.rectTransform;
-        bgRt.anchorMin = Vector2.zero;
-        bgRt.anchorMax = Vector2.one;
-        bgRt.offsetMin = Vector2.zero;
-        bgRt.offsetMax = Vector2.zero;
-        bgRt.SetAsFirstSibling();
-
-        var scroll = viewport.gameObject.AddComponent<ScrollRect>();
-        scroll.viewport = viewport;
-        scroll.content = _content;
-        scroll.horizontal = false;
-        scroll.vertical = true;
-        scroll.movementType = ScrollRect.MovementType.Clamped;
-        scroll.scrollSensitivity = 24f;
-        scroll.inertia = true;
-        scroll.verticalNormalizedPosition = 1f;
-        _scroll = scroll;
-    }
-
-    private float _y;
-
-    private void RebuildContent()
-    {
-        if (_content == null) return;
-        float keepScroll = _scroll != null ? _scroll.verticalNormalizedPosition : 1f;
-
-        for (int i = _content.childCount - 1; i >= 0; i--)
-        {
-            var child = _content.GetChild(i);
-            if (child.name == "ScrollBG") continue;
-            Object.Destroy(child.gameObject);
-        }
-
-        _y = 0f;
-
         try
         {
             var room = VoiceRoom.Current;
-            if (room == null)
-            {
-                RenderInfoRow(Get("vc.playerVolume.noRoom", "Not connected to a voice room."));
-            }
-            else
-            {
-                var players = room.AllClients
-                    .Where(c => c.PlayerId != byte.MaxValue)
-                    .OrderBy(c => c.PlayerName, StringComparer.OrdinalIgnoreCase)
-                    .ToList();
-
-                if (players.Count == 0)
-                    RenderInfoRow(Get("vc.playerVolume.noPlayers", "No other players connected yet."));
-                else
-                    foreach (var p in players) RenderPlayerRow(p);
-            }
+            if (room == null) return new List<VCPlayer>();
+            return room.AllClients
+                .Where(c => c.PlayerId != byte.MaxValue)
+                .OrderBy(c => c.PlayerName, StringComparer.OrdinalIgnoreCase)
+                .ToList();
         }
         catch (Exception e)
         {
-            InterstellarPlugin.Logger?.LogError($"[VC] Player volume RebuildContent failed: {e}");
+            InterstellarPlugin.Logger?.LogWarning($"[VC] Player volume snapshot failed: {e.Message}");
+            return new List<VCPlayer>();
         }
-
-        _content.sizeDelta = new Vector2(ContentW, _y + 24f);
-        if (_scroll != null) _scroll.verticalNormalizedPosition = keepScroll;
-        _playersSig = BuildPlayersSignature();
     }
 
-    private RectTransform AddRow()
+    /// <summary>Row factory for the settings panel: the same per-player slider, value
+    /// pill and AUTO chip the F3 window drew — manual edit still drops the auto flag
+    /// first so <see cref="VCPlayer.SetVolume"/> actually takes the value — parented to
+    /// the panel's pane at the panel's row height.</summary>
+    internal static VoiceUiKit.PlayerVolumeRow BuildRow(
+        RectTransform pane, VCPlayer p, string displayName, float paneW, float y, float height)
     {
-        var row = VCUiKit.NewRect(_content, "Row");
-        row.anchorMin = row.anchorMax = new Vector2(0f, 1f);
-        row.pivot = new Vector2(0f, 1f);
-        row.anchoredPosition = new Vector2(0f, -_y);
-        row.sizeDelta = new Vector2(ContentW, RowH);
-        _y += RowH;
+        string pname = p.PlayerName;
+        var pc = FindPlayerControl(p.PlayerId);
 
-        var div = VCUiKit.CreateDivider(row, Vector2.zero, new Vector2(ContentW - 40f, 2f));
-        var divRt = div.rectTransform;
-        divRt.anchorMin = new Vector2(0f, 0f);
-        divRt.anchorMax = new Vector2(0f, 0f);
-        divRt.pivot = new Vector2(0f, 0f);
-        divRt.anchoredPosition = new Vector2(20f, 3f);
-        divRt.sizeDelta = new Vector2(ContentW - 40f, 2f);
+        var row = new VoiceUiKit.PlayerVolumeRow(
+            () => p.Volume,
+            v =>
+            {
+                if (VoiceConfig.GetPlayerAutoVolume(pname)) VoiceConfig.SetPlayerAutoVolume(pname, false);
+                p.SetVolume(v);
+                VoiceConfig.SetPlayerVolume(pname, v);
+            },
+            () => VoiceConfig.SetPlayerVolume(pname, p.Volume),
+            pc, VMin, VMax,
+            () => !VoiceConfig.GetPlayerAutoVolume(pname),
+            () => VoiceConfig.GetPlayerAutoVolume(pname),
+            () =>
+            {
+                // The chip is the only way in (and out) of auto-volume: flipping it off
+                // also pins the level auto had settled on so it survives a restart.
+                bool was = VoiceConfig.GetPlayerAutoVolume(pname);
+                VoiceConfig.SetPlayerAutoVolume(pname, !was);
+                if (was) VoiceConfig.SetPlayerVolume(pname, p.Volume);
+            })
+            .Build(pane, displayName, paneW, y, height);
+        row.PlayerId = p.PlayerId;
         return row;
     }
 
-    private void RenderInfoRow(string text)
+    /// <summary>Feeds the live level bars. Called from the settings panel's tick while
+    /// the PLAYER VOLUME rows are on screen; rows that died with an earlier rebuild are
+    /// already out of that list, so nothing stale is ever touched.</summary>
+    internal static void FeedMeters(List<VoiceUiKit.Row> rows)
     {
-        var row = AddRow();
-        VCUiKit.CreateText(row, "Info", text,
-            Vector2.zero, new Vector2(ContentW - 40f, RowH - 12f),
-            F(19f), Color.gray, FontStyles.Normal, TextAlignmentOptions.Left, true);
+        VCPlayer[] clients;
+        try
+        {
+            var room = VoiceRoom.Current;
+            clients = room == null
+                ? Array.Empty<VCPlayer>()
+                : room.AllClients.Select(c => c).ToArray();
+        }
+        catch
+        {
+            // The network thread can mutate AllClients mid-enumeration: skip this
+            // frame's levels and try again on the next tick.
+            return;
+        }
+
+        for (int i = 0; i < rows.Count; i++)
+        {
+            if (rows[i] is not VoiceUiKit.PlayerVolumeRow row) continue;
+
+            VCPlayer? player = null;
+            for (int j = 0; j < clients.Length; j++)
+                if (clients[j].PlayerId == row.PlayerId) { player = clients[j]; break; }
+
+            if (player == null) { row.SetLevel(0f, false); continue; }
+
+            float level = player.Level;
+            row.SetLevel(level, level > SpeakingThreshold && player.IsAudible);
+        }
     }
 
-    private void RenderPlayerRow(VCPlayer p)
+    internal static string ResolveDisplayName(VCPlayer p)
     {
-        var row = AddRow();
-
         string displayName = "...";
         if (p.IsMapped)
         {
@@ -333,53 +170,13 @@ public class PlayerVolumeWindow : MonoBehaviour
         }
         if (displayName == "..." && !string.IsNullOrWhiteSpace(p.PlayerName))
             displayName = p.PlayerName;
+        return displayName;
+    }
 
-        // Row spans [-half, +half] with center anchor (0.5, 0.5).
-        float half = ContentW / 2f;
-        float nameW = 200f;
-        float valueW = 70f;
-        float autoW = 80f;
-        float pad = 40f;
-
-        // Name: left-aligned block, left edge at -half + pad.
-        VCUiKit.CreateText(row, "Name", displayName,
-            new Vector2(-half + pad + nameW / 2f, 0f), new Vector2(nameW, RowH - 12f),
-            F(21f), Color.white, FontStyles.Bold, TextAlignmentOptions.Left, true);
-
-        string pname = p.PlayerName;
-        bool isAuto = VoiceConfig.GetPlayerAutoVolume(pname);
-
-        // Value: right-aligned, right edge at +half - pad.
-        var valueTmp = VCUiKit.CreateText(row, "Value", $"{p.Volume * 100f:F0}%", Vector2.zero,
-            new Vector2(valueW, RowH - 12f), F(20f), new Color(1f, 0.86f, 0.55f, 1f),
-            FontStyles.Bold, TextAlignmentOptions.Right);
-        var vrt = (RectTransform)valueTmp.transform;
-        vrt.anchorMin = vrt.anchorMax = new Vector2(1f, 0.5f);
-        vrt.anchoredPosition = new Vector2(-pad, 0f);
-
-        // Auto toggle: sits between value and slider.
-        float autoCenter = half - pad - valueW / 2f - 14f - autoW / 2f;
-        VCUiKit.CreateToggle(row, TranslationHelper.Get("vc.player.auto", "Auto"),
-            new Vector2(autoCenter, 0f), new Vector2(autoW, 40f),
-            () => VoiceConfig.GetPlayerAutoVolume(pname),
-            v =>
-            {
-                VoiceConfig.SetPlayerAutoVolume(pname, v);
-                RebuildContent();
-            }, 18f);
-
-        // Slider: fills the gap between name and toggle.
-        float sliderLeft = -half + pad + nameW + 20f;
-        float sliderRight = autoCenter - autoW / 2f - 16f;
-        float sliderW = sliderRight - sliderLeft;
-        if (sliderW < 100f) sliderW = 100f;
-        VCUiKit.CreateSlider(row, new Vector2((sliderLeft + sliderRight) / 2f, 0f),
-            new Vector2(sliderW, 44f), 0f, 2f, p.Volume,
-            v =>
-            {
-                p.SetVolume(v);
-                VoiceConfig.SetPlayerVolume(pname, v);
-                valueTmp.text = $"{v * 100f:F0}%";
-            }, 10f, !isAuto);
+    private static PlayerControl FindPlayerControl(byte playerId)
+    {
+        foreach (var pc in PlayerControl.AllPlayerControls)
+            if (pc != null && pc.PlayerId == playerId) return pc;
+        return null;
     }
 }

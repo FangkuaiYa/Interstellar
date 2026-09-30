@@ -52,9 +52,12 @@ public class ManualMicrophone : IMicrophone
     void IMicrophone.SetVolume(float volume) => this.volume = Math.Clamp(volume, 0.0f, 1.0f);
 
 
-    // Always 40ms frames (25 packets/sec) — halves packet rate vs mixing 20ms,
-    // cutting RTP+WebSocket per-packet overhead in half with negligible latency impact.
-    private const int AudioLength = (int)(AudioConstants.ClockRate * 0.040f); // 40ms @ 48kHz = 1920 samples
+    // Always 20ms frames (50 packets/sec). The old 40ms choice traded loss
+    // granularity for per-packet overhead, but a dropped 40ms packet is an
+    // audible hole, Opus' inband FEC is built around 20ms frames, and capture
+    // latency halves. Framing overhead is ~8% extra on the wire (base64 per
+    // packet) — well inside the relay server's rate budget (peers x 50/s).
+    private const int AudioLength = (int)(AudioConstants.ClockRate * 0.020f); // 20ms @ 48kHz = 960 samples
     private float[] cachedAudio = new float[AudioLength];
     private int cachedLength = 0;
     private float[] sampleBuffer = new float[AudioLength];
@@ -99,7 +102,7 @@ public class ManualMicrophone : IMicrophone
             Interstellar.InterstellarPlugin.Logger.LogWarning("[VC:Mic] ManualMicrophone not initialized — audio will NOT be sent.");
             return;
         }
-        context?.SendAudio(sampleBuffer, AudioLength, 40.0, volume);
+        context?.SendAudio(sampleBuffer, AudioLength, 20.0, volume);
     }
 }
 
@@ -110,7 +113,7 @@ public class WindowsMicrophone : IMicrophone
     {
         context = microphoneContext;
 
-        waveIn = new WaveInEvent() { BufferMilliseconds = 40, NumberOfBuffers = 3 };
+        waveIn = new WaveInEvent() { BufferMilliseconds = 20, NumberOfBuffers = 3 };
         waveIn.DeviceNumber = deviceNum;
         waveIn.WaveFormat = new WaveFormat(48000, 16, 1);
         waveIn.DataAvailable += SendAudio;

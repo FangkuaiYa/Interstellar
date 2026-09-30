@@ -1,3 +1,4 @@
+using Interstellar.Audio;
 using Interstellar.Audio.Provider;
 using NAudio.Wave;
 using System;
@@ -30,7 +31,7 @@ internal class AudioMixer : ISampleProvider
         bool isFirst = true;
         if(inputs.Count == 0)
         {
-            Array.Clear(buffer, offset, count);
+            SampleFill.Clear(buffer, offset, count);
             return count;
         }
 

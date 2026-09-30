@@ -4,6 +4,7 @@ using BepInEx.Logging;
 using BepInEx.Unity.IL2CPP;
 using HarmonyLib;
 using Il2CppInterop.Runtime.Injection;
+using Interstellar.UI;
 using Interstellar.Voice;
 
 namespace Interstellar;
@@ -13,7 +14,7 @@ namespace Interstellar;
 public class InterstellarPlugin : BasePlugin
 {
     public const string Id = "com.interstellar.voice";
-    public const string PluginVersion = "3.1.4";
+    public const string PluginVersion = "4.0.0";
     public static ManualLogSource Logger { get; private set; } = null!;
 
     private const string ResPrefix = "Lib.";
@@ -56,6 +57,7 @@ public class InterstellarPlugin : BasePlugin
         ClassInjector.RegisterTypeInIl2Cpp<VoiceSettingsWindow>();
         ClassInjector.RegisterTypeInIl2Cpp<PublicLobbyWindow>();
         ClassInjector.RegisterTypeInIl2Cpp<PlayerVolumeWindow>();
+        ClassInjector.RegisterTypeInIl2Cpp<VoiceUiDriver>();
 
         var settingsWindow = this.AddComponent<VoiceSettingsWindow>();
         var lobbyWindow = this.AddComponent<PublicLobbyWindow>();
