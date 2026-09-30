@@ -384,9 +384,9 @@ func TestLobbyRegistry(t *testing.T) {
 	// The browser copies the room code via join_lobby + ack.
 	watcher.write(`421["join_lobby",` + fmt.Sprint(l.Id) + `]`)
 
-	// Read the ack: must be 3<ackId>[0,"QWERTY"] (socket.io ack packet).
+	// Read the ack: must be 43<ackId>[0,"QWERTY"] — engine.io MESSAGE + socket.io ack.
 	ack := watcher.readExpect()
-	if !strings.HasPrefix(ack, "31[0,\"QWERTY\"]") {
+	if !strings.HasPrefix(ack, "431[0,\"QWERTY\"]") {
 		t.Fatalf("join_lobby ack wrong: %q", ack)
 	}
 

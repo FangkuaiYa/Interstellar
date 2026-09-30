@@ -398,7 +398,8 @@ func (s *server) evictOldestLobbyLocked() {
 
 // join_lobby ack: the client's lobby browser asks for the room code behind a
 // listed lobby id and copies it to the clipboard.
-// Wire form: 3<ackId>[0,"CODE"] on success, 3<ackId>[1,""] when unknown.
+// Wire form (engine.io MESSAGE '4' + socket.io ACK '3', as every other frame):
+// 43<ackId>[0,"CODE"] on success, 43<ackId>[1,""] when unknown.
 func (s *server) handleJoinLobby(c *client, args []json.RawMessage, ackID string) {
 	if len(args) < 1 || ackID == "" {
 		return
@@ -435,7 +436,7 @@ func sioEventAck(ackID string, state int, value string) string {
 	if err != nil {
 		return ""
 	}
-	return "3" + ackID + string(b)
+	return "43" + ackID + string(b)
 }
 
 // sendRosterLocked hands every remaining member its own view of the room:

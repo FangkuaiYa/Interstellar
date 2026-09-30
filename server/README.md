@@ -324,7 +324,7 @@ CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
   42["VAD", {"activity": bool, "client": {"clientId": n}}]
   42["signal", {"from": sid, "to": sid, "data": "..."}]        ← from 必填
   42["new_lobbies", […]] / 42["update_lobby", {…}] / 42["remove_lobby", id]
-  3<ack>[0,"ROOMCODE"]
+  43<ack>[0,"ROOMCODE"]   ← 引擎前缀 '4' + ack '3'，与 42 同帧规则一致
 ```
 
 **两条不能破坏的契约**（测试 `TestHandshakeIsTwoFrames` 会守住）：

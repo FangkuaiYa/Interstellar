@@ -1142,19 +1142,23 @@ internal static class VoiceUiKit
         private const float ButtonWidth = 220f;
         private readonly Action _onClick;
         private readonly Func<bool> _enabled;
+        private readonly float _buttonWidth;
         private RectTransform _buttonRt = null!;
         private Image _button = null!;
         private Image _buttonGlow = null!;
         private TextMeshProUGUI _buttonLabel = null!;
 
-        public ActionRow(Action onClick, Func<bool>? enabled = null)
+        /// <param name="buttonWidth">Slot width for the action button; a narrower slot
+        /// widens the label column — the lobby rows use this for their two-line text.</param>
+        public ActionRow(Action onClick, Func<bool>? enabled = null, float buttonWidth = ButtonWidth)
         {
             _onClick = onClick ?? throw new ArgumentNullException(nameof(onClick));
             _enabled = enabled ?? (() => true);
+            _buttonWidth = Mathf.Max(60f, buttonWidth);
         }
 
         protected override float LabelColW =>
-            Mathf.Round(PaneW - EdgePad * 2f - ColGap - ButtonWidth);
+            Mathf.Round(PaneW - EdgePad * 2f - ColGap - _buttonWidth);
 
         public ActionRow Build(
             RectTransform pane,
@@ -1163,13 +1167,21 @@ internal static class VoiceUiKit
             float width,
             float y,
             float height,
-            string? helpText = null)
+            string? helpText = null,
+            bool wrapLabel = false)
         {
             BuildBase(pane, label, width, y, height, helpText);
+            if (wrapLabel)
+            {
+                // Paragraph-style label: long detail lines wrap inside the row rect
+                // instead of ending at an ellipsis (the lobby rows need every character).
+                Title.overflowMode = TextOverflowModes.Overflow;
+                Title.enableWordWrapping = true;
+            }
 
             _buttonRt = Rect("ActionButton", Root);
             _buttonRt.Anchor(new Vector2(1f, 0.5f), new Vector2(1f, 0.5f), new Vector2(1f, 0.5f));
-            _buttonRt.sizeDelta = new Vector2(ButtonWidth, 40f);
+            _buttonRt.sizeDelta = new Vector2(_buttonWidth, 40f);
             _buttonRt.anchoredPosition = new Vector2(-EdgePad, 0f);
 
             _buttonGlow = GlowImage("ActionButtonGlow", _buttonRt, Clear);
@@ -2381,6 +2393,9 @@ internal static class VoiceUiKit
             Title.color = TextMuted;
             Title.fontSizeMax = 19f;
             Title.fontSizeMin = 14f;
+            // Help paragraphs wrap inside the rect instead of ellipsizing at the edge.
+            Title.overflowMode = TextOverflowModes.Overflow;
+            Title.enableWordWrapping = true;
             Title.rectTransform.sizeDelta = new Vector2(PaneW - EdgePad * 2f, Height);
             return this;
         }
@@ -2477,13 +2492,7 @@ internal static class VoiceUiKit
         private readonly PlayerControl? _pc;
         private readonly float _min, _max;
         private readonly Func<bool>? _enabled;
-        /// <summary>Auto-volume state/toggle — Interstellar has no Perfect-Comms
-        /// equivalent, so it rides as a compact chip beside the value pill. Null
-        /// toggle = no chip (row geometry then matches the reference exactly).</summary>
-        private readonly Func<bool>? _autoGet;
-        private readonly Action? _autoToggle;
 
-        /// <summary>Voice client this row edits, so the window can feed the meter.</summary>
         public byte PlayerId;
 
         private RectTransform _track = null!;
@@ -2494,11 +2503,13 @@ internal static class VoiceUiKit
         private LiveLevelMeter _levelMeter = null!;
         private Image _avatarGlow = null!;
         private Image _avatarImg = null!;
+        /// <summary>Layered outfit images inside the avatar slot (stack mode), and the
+        /// layer list they were built from — null while the row shows the plain
+        /// identity body.</summary>
+        private readonly List<Image> _avatarLayers = new();
+        private List<CrewmateIcon.AvatarLayer>? _appliedAvatar;
         private RectTransform _resetRt = null!;
         private Image _resetImg = null!;
-        private RectTransform _autoRt = null!;
-        private Image _autoImg = null!;
-        private TextMeshProUGUI _autoLabel = null!;
         private TextMeshProUGUI _value = null!;
         private Color _glowColor;
         private float _trackW;
@@ -2520,9 +2531,7 @@ internal static class VoiceUiKit
             PlayerControl? pc,
             float min,
             float max,
-            Func<bool>? enabled = null,
-            Func<bool>? autoGet = null,
-            Action? autoToggle = null)
+            Func<bool>? enabled = null)
         {
             _get = get;
             _onChange = onChange;
@@ -2531,8 +2540,96 @@ internal static class VoiceUiKit
             _min = min;
             _max = max;
             _enabled = enabled;
-            _autoGet = autoGet;
-            _autoToggle = autoToggle;
+        }
+
+        /// <summary>Keeps the avatar in sync with the player's outfit. Body-only mode
+        /// refreshes the identity sprite in place (palette colours can change
+        /// mid-session); a resolved outfit stack swaps the slot into layered mode and
+        /// back by list reference, so an unchanged outfit never rebuilds.</summary>
+        private void ApplyAvatar()
+        {
+            var layers = CrewmateIcon.AvatarLayersFor(_pc);
+            if (layers != null)
+            {
+                if (ReferenceEquals(layers, _appliedAvatar)) return;
+                BuildAvatarStack(layers);
+                _appliedAvatar = layers;
+                return;
+            }
+            if (_appliedAvatar != null)
+            {
+                ClearAvatarStack();
+                _appliedAvatar = null;
+            }
+            // Identity refresh: re-query the reference icon — a cached colour is a
+            // dictionary hit. (Not the composed stack: dead/no-body answers are stable.)
+            var av = CrewmateIcon.SpriteFor(_pc);
+            if (av != null && !ReferenceEquals(av, _avatarImg.sprite))
+            {
+                _avatarImg.enabled = true;
+                _avatarImg.sprite = av;
+                _avatarImg.type = Image.Type.Simple;
+                _avatarImg.preserveAspect = true;
+                _avatarImg.color = Color.white;
+            }
+        }
+
+        /// <summary>Layers the identity body and the cosmetics as child images inside
+        /// the 50 px avatar slot, fitted as a whole (a tall hat shrinks the stack instead
+        /// of spilling into neighbouring rows). Draw order is the list order — already
+        /// sorted back-to-front by CrewmateIcon.</summary>
+        private void BuildAvatarStack(List<CrewmateIcon.AvatarLayer> layers)
+        {
+            ClearAvatarStack();
+            if (layers.Count == 0) return;
+            float minX = float.MaxValue, minY = float.MaxValue;
+            float maxX = float.MinValue, maxY = float.MinValue;
+            for (int i = 0; i < layers.Count; i++)
+            {
+                var r = layers[i].Local;
+                if (r.xMin < minX) minX = r.xMin;
+                if (r.xMax > maxX) maxX = r.xMax;
+                if (r.yMin < minY) minY = r.yMin;
+                if (r.yMax > maxY) maxY = r.yMax;
+            }
+            var slot = _avatarImg.rectTransform;
+            float spanX = Mathf.Max(maxX - minX, 1e-4f);
+            float spanY = Mathf.Max(maxY - minY, 1e-4f);
+            float k = Mathf.Min(slot.sizeDelta.x / spanX, slot.sizeDelta.y / spanY);
+            float cx = (minX + maxX) * 0.5f;
+            float cy = (minY + maxY) * 0.5f;
+
+            _avatarImg.enabled = false;
+            for (int i = 0; i < layers.Count; i++)
+            {
+                var L = layers[i];
+                var rt = Rect("Layer" + i, slot);
+                rt.Anchor(new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+                rt.sizeDelta = new Vector2(L.Local.width * k, L.Local.height * k);
+                // RectTransforms are y-up like player-local space: map straight
+                // across, no negation. Mirroring flips about the layer's own pivot,
+                // matching the world-space original.
+                rt.anchoredPosition = new Vector2(
+                    (L.Local.x + L.Local.width * 0.5f - cx) * k,
+                    (L.Local.y + L.Local.height * 0.5f - cy) * k);
+                rt.localScale = new Vector3(L.FlipX ? -1f : 1f, L.FlipY ? -1f : 1f, 1f);
+                var img = rt.gameObject.AddComponent<Image>();
+                img.sprite = L.Sprite;
+                img.color = L.Tint;
+                img.raycastTarget = false;
+                _avatarLayers.Add(img);
+            }
+        }
+
+        private void ClearAvatarStack()
+        {
+            for (int i = 0; i < _avatarLayers.Count; i++)
+            {
+                var img = _avatarLayers[i];
+                if (img != null) Object.Destroy(img.gameObject);
+            }
+            _avatarLayers.Clear();
+            if (_avatarImg != null) _avatarImg.enabled = true;
         }
 
         public PlayerVolumeRow Build(RectTransform pane, string name, float width, float y, float height)
@@ -2556,10 +2653,7 @@ internal static class VoiceUiKit
             avatarRt.sizeDelta = new Vector2(avatarD, avatarD);
             avatarRt.anchoredPosition = new Vector2(avatarCx, 0f);
             _avatarImg = avatarRt.gameObject.AddComponent<Image>();
-            // Speaking-bar style avatar: the stable-identity crewmate wearing the player's
-            // live hat/skin/visor, composed by CrewmateIcon. Falls back to the identity
-            // body while cosmetics load or when the player is dead.
-            var body = CrewmateIcon.AvatarFor(_pc);
+            var body = CrewmateIcon.SpriteFor(_pc);
             if (body != null)
             {
                 _avatarImg.sprite = body;
@@ -2588,15 +2682,10 @@ internal static class VoiceUiKit
             const float resetD = 36f;
             const float pillW = 60f;
             const float gap = 14f;
-            // Auto-volume gets a 56px chip between the slider and the value pill; with
-            // no chip callback the layout collapses back to the reference geometry.
-            const float autoW = 56f;
-            const float autoGap = 10f;
             float sliderLeft = textLeft + textColW + ColGap;
             float resetLeft = PaneW - EdgePad - resetD;
             float pillLeft = resetLeft - gap - pillW;
-            float autoLeft = _autoToggle == null ? pillLeft : pillLeft - autoGap - autoW;
-            float sliderRight = autoLeft - gap;
+            float sliderRight = pillLeft - gap;
             _trackW = Mathf.Max(120f, sliderRight - sliderLeft);
 
             _track = Rect("Track", Root);
@@ -2658,24 +2747,6 @@ internal static class VoiceUiKit
             _value.rectTransform.offsetMin = new Vector2(4f, 0f);
             _value.rectTransform.offsetMax = new Vector2(-4f, 0f);
 
-            if (_autoToggle != null)
-            {
-                _autoRt = Rect("Auto", Root);
-                _autoRt.Anchor(new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(0f, 0.5f));
-                _autoRt.sizeDelta = new Vector2(autoW, 34f);
-                _autoRt.anchoredPosition = new Vector2(autoLeft, 0f);
-                _autoImg = _autoRt.gameObject.AddComponent<Image>();
-                _autoImg.sprite = Rounded(true);
-                _autoImg.type = Image.Type.Sliced;
-                _autoImg.color = ControlBg;
-                _autoImg.raycastTarget = false;
-                _autoLabel = Text("AutoLabel", _autoRt, TranslationHelper.Get("vc.common.auto", "AUTO"), 15f, TextMuted,
-                    TextAlignmentOptions.Center, FontStyles.Bold);
-                _autoLabel.rectTransform.Anchor(Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f));
-                _autoLabel.rectTransform.offsetMin = new Vector2(3f, 0f);
-                _autoLabel.rectTransform.offsetMax = new Vector2(-3f, 0f);
-            }
-
             _resetRt = Rect("Reset", Root);
             _resetRt.Anchor(new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(0f, 0.5f));
             _resetRt.sizeDelta = new Vector2(resetD, resetD);
@@ -2698,8 +2769,6 @@ internal static class VoiceUiKit
             return this;
         }
 
-        /// <summary>Circular-arrow glyph drawn in code: Interstellar ships no reset icon
-        /// asset and this row must not add one.</summary>
         private static Sprite BuildResetIcon()
         {
             const int s = 64;
@@ -2804,16 +2873,8 @@ internal static class VoiceUiKit
                 ApplyVisual();
                 return;
             }
-            // Auto chip sits outside the `_enabled` gate on purpose: it is the control
-            // that turns auto-volume off again (and the only one that turns it on).
-            if (_autoRt != null && Contains(_autoRt))
-            {
-                RebindRow.CancelCaptureForExternalPointer();
-                try { _autoToggle?.Invoke(); } catch { }
-                ApplyVisual();
-                return;
-            }
-            // Auto-volume owns this player's volume: keep the slider readable but inert.
+            // Auto-volume is the page's global switch now: inside the gate, only the
+            // reset button and the slider remain.
             if (_enabled != null && !_enabled()) return;
             if (Contains(_track) || Contains(_knob))
             {
@@ -2851,16 +2912,6 @@ internal static class VoiceUiKit
             if (!_dragging) ApplyVisual();
             _resetImg.color = Lerp(_resetImg.color, Contains(_resetRt) ? ControlHover : ControlBg, 0.25f);
 
-            if (_autoImg != null)
-            {
-                bool on = _autoGet != null && _autoGet();
-                bool over = Contains(_autoRt);
-                _autoImg.color = Lerp(_autoImg.color,
-                    on ? AccentFaint : over ? ControlHover : ControlBg, 0.25f);
-                _autoLabel.color = Lerp(_autoLabel.color,
-                    on ? Accent : over ? TextBright : TextMuted, 0.25f);
-            }
-
             if (_enabled != null && !_enabled())
             {
                 _fillImg.color = Lerp(_fillImg.color, Dim(_fillImg.color), 0.25f);
@@ -2875,13 +2926,8 @@ internal static class VoiceUiKit
                 _fillImg.color = FillColor(Mathf.Clamp(_get(), _min, _max));
             }
 
-            // Cosmetics finish loading after the row is built (and an outfit swap can land
-            // mid-session): re-query the avatar — resolved entries are a dictionary hit.
-            if (_avatarImg != null)
-            {
-                var av = CrewmateIcon.AvatarFor(_pc);
-                if (av != null && !ReferenceEquals(av, _avatarImg.sprite)) _avatarImg.sprite = av;
-            }
+            // Outfit sync: identity refresh in place, or the layered outfit stack.
+            if (_avatarImg != null) ApplyAvatar();
 
             _levelMeter.Tick(dt);
             float shown = _levelMeter.DisplayLevel;

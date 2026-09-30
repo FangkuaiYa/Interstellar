@@ -80,6 +80,7 @@
   <string name="vc.common.on">开</string>
   <string name="vc.common.off">关</string>
   <string name="vc.player.auto">自动</string>
+  <string name="vc.player.autoVolume">自动调整音量</string>
   <string name="vc.cat.audio">音频</string>
   <string name="vc.cat.devices">设备</string>
   <string name="vc.cat.keybinds">快捷键</string>
@@ -88,7 +89,8 @@
   <string name="vc.settings.open">打开</string>
   <string name="vc.settings.help.micVolume">麦克风的输入增益。100% 为正常音量；只有当别人说你声音太小时才调高。</string>
   <string name="vc.settings.help.masterVolume">所有其他玩家的整体播放音量。100% 为正常音量。</string>
-  <string name="vc.settings.help.playerVolume">单独调整每位玩家的音量并开启自动音量。会打开 F3 窗口。</string>
+  <string name="vc.settings.help.playerAutoVolume">自动把所有玩家的音量维持在稳定水平。开启时下方滑条只读。</string>
+  <string name="vc.settings.help.playerVolume">单独调整每位玩家的音量。会打开 F3 窗口。</string>
   <string name="vc.settings.help.microphone">语音聊天采集用的麦克风。选择“系统默认”即可使用系统默认设备。</string>
   <string name="vc.settings.help.speaker">语音聊天的输出设备。选择“系统默认”即可使用系统默认设备。</string>
   <string name="vc.settings.help.maxChatDistance">其他玩家还能听到你的距离（米）。房主设置。</string>

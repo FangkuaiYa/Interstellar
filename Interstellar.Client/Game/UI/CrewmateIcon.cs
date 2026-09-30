@@ -26,11 +26,29 @@ internal static class CrewmateIcon
     private const string EmptySkinId = "skin_None";
     private const string EmptyVisorId = "visor_EmptyVisor";
 
-    /// <summary>Canvas scale: the identity body drawn this many pixels tall, cosmetics
-    /// placed at their live player-local offsets. ~3× headroom over the 50 px row avatar.</summary>
-    private const float AvatarBodyPx = 150f;
-    private const int MaxAvatarPx = 384;
     private const float AvatarRetrySeconds = 0.75f;
+
+    private const int BodyOrder = 1;
+
+    public readonly struct AvatarLayer
+    {
+        internal AvatarLayer(Sprite sprite, Rect local, bool flipX, bool flipY, Color32 tint, int order)
+        {
+            Sprite = sprite;
+            Local = local;
+            FlipX = flipX;
+            FlipY = flipY;
+            Tint = tint;
+            Order = order;
+        }
+
+        internal readonly Sprite Sprite;
+        internal readonly Rect Local;
+        internal readonly bool FlipX;
+        internal readonly bool FlipY;
+        internal readonly Color32 Tint;
+        internal readonly int Order;
+    }
 
     private sealed class AvatarEntry
     {
@@ -39,8 +57,7 @@ internal static class CrewmateIcon
         internal string Skin = "";
         internal string Visor = "";
         internal bool Dead;
-        internal Sprite? Sprite;
-        internal bool OwnsSprite;
+        internal List<AvatarLayer>? Layers;
         internal bool Resolved;
         internal float RetryAt;
     }
@@ -52,6 +69,8 @@ internal static class CrewmateIcon
         internal Sprite Sprite = null!;
         internal SpriteRenderer Renderer = null!;
         internal Transform Leaf = null!;
+        internal Transform? Root;
+        internal Vector3 Anchor;
         internal int Order;
         internal Rect Local;
         internal bool FlipX;
@@ -59,8 +78,6 @@ internal static class CrewmateIcon
         internal Color32 Tint = new(255, 255, 255, 255);
     }
 
-    /// <summary>Stable identity glow color — the palette swatch with the same green
-    /// fallback the rest of the voice UI uses.</summary>
     public static Color ColorFor(PlayerControl? pc)
     {
         int id = ColorIdFor(pc);
@@ -68,25 +85,23 @@ internal static class CrewmateIcon
         return (Color)Palette.PlayerColors[Math.Clamp(id, 0, Palette.PlayerColors.Length - 1)];
     }
 
-    /// <summary>The identity crewmate for this player, or null when there is no live
-    /// player (caller falls back to a plain rounded pill).</summary>
     public static Sprite? SpriteFor(PlayerControl? pc)
     {
         int id = ColorIdFor(pc);
         if (id < 0) return null;
-        id = Math.Clamp(id, 0, Palette.PlayerColors.Length - 1);
-        if (Cache.TryGetValue(id, out var hit) && hit != null) return hit;
-        var sprite = Build(id);
-        if (sprite != null) Cache[id] = sprite;
+        return BodySpriteFor(id);
+    }
+
+    private static Sprite? BodySpriteFor(int colorId)
+    {
+        colorId = Math.Clamp(colorId, 0, Palette.PlayerColors.Length - 1);
+        if (Cache.TryGetValue(colorId, out var hit) && hit != null) return hit;
+        var sprite = Build(colorId);
+        if (sprite != null) Cache[colorId] = sprite;
         return sprite;
     }
 
-    /// <summary>The player's speaking-bar style avatar — the identity crewmate wearing
-    /// their live hat/skin/visor (the reference speaker display, composed into one sprite
-    /// for this UI). Falls back to the plain identity crewmate while cosmetics are still
-    /// loading, when the player is dead (stable identity), or when there is no live body.
-    /// Cheap to call every frame: a resolved entry is a dictionary hit.</summary>
-    public static Sprite? AvatarFor(PlayerControl? pc)
+    public static List<AvatarLayer>? AvatarLayersFor(PlayerControl? pc)
     {
         try
         {
@@ -119,27 +134,47 @@ internal static class CrewmateIcon
             bool same = old != null && old.ColorId == colorId && old.Hat == hat
                 && old.Skin == skin && old.Visor == visor && old.Dead == dead;
             if (same && (old!.Resolved || Time.unscaledTime < old.RetryAt))
-                return old.Sprite ?? SpriteFor(pc);
+                return old.Layers;
 
-            var sprite = ComposeAvatar(pc, colorId, hat, skin, visor, out bool resolved);
-            bool owns = sprite != null;
-            if (sprite == null) sprite = SpriteFor(pc);
-            if (old != null && old.OwnsSprite) DestroySprite(old.Sprite);
+            var layers = CollectAvatarLayers(pc, colorId, hat, skin, visor, out bool resolved);
+            if (old != null && SameLayers(old.Layers, layers))
+            {
+                old.Resolved = resolved;
+                old.RetryAt = Time.unscaledTime + AvatarRetrySeconds;
+                return old.Layers;
+            }
             Avatars[pid] = new AvatarEntry
             {
                 ColorId = colorId, Hat = hat, Skin = skin, Visor = visor, Dead = dead,
-                Sprite = sprite, OwnsSprite = owns, Resolved = resolved,
+                Layers = layers, Resolved = resolved,
                 RetryAt = Time.unscaledTime + AvatarRetrySeconds
             };
-            return sprite;
+            return layers;
         }
         catch
         {
-            return SpriteFor(pc);
+            return null;
         }
     }
 
-    /// <summary>DefaultOutfit.ColorId — the stable identity, never a live disguise.</summary>
+    private static bool SameLayers(List<AvatarLayer>? a, List<AvatarLayer>? b)
+    {
+        if (ReferenceEquals(a, b)) return true;
+        if (a == null || b == null || a.Count != b.Count) return false;
+        for (int i = 0; i < a.Count; i++)
+        {
+            var x = a[i];
+            var y = b[i];
+            if (!ReferenceEquals(x.Sprite, y.Sprite) || x.Local != y.Local
+                || x.FlipX != y.FlipX || x.FlipY != y.FlipY || x.Order != y.Order)
+                return false;
+            if (x.Tint.r != y.Tint.r || x.Tint.g != y.Tint.g
+                || x.Tint.b != y.Tint.b || x.Tint.a != y.Tint.a)
+                return false;
+        }
+        return true;
+    }
+
     private static int ColorIdFor(PlayerControl? pc)
     {
         if (pc?.Data == null) return -1;
@@ -147,13 +182,7 @@ internal static class CrewmateIcon
         catch { return -1; }
     }
 
-    /// <summary>Composes the identity crewmate with the player's live cosmetic layers at
-    /// their exact player-local offsets (reference speaking-avatar geometry): hat back,
-    /// body, skin, hat front, visor. Idle frames keep walk-animated cosmetics still.
-    /// Null when there is no live body to anchor on (or the player is dead — then
-    /// resolved=true, the stable identity is the final answer); resolved=false asks the
-    /// caller to retry shortly, cosmetics or the body may still be loading.</summary>
-    private static Sprite? ComposeAvatar(PlayerControl pc, int colorId,
+    private static List<AvatarLayer>? CollectAvatarLayers(PlayerControl pc, int colorId,
         string hatId, string skinId, string visorId, out bool resolved)
     {
         resolved = false;
@@ -177,28 +206,35 @@ internal static class CrewmateIcon
             catch { body = null; }
             if (body == null || body.sprite == null) return null;
 
-            var pctr = pc.transform;
-            float pScaleX = Mathf.Abs(pctr.lossyScale.x);
-            float pScaleY = Mathf.Abs(pctr.lossyScale.y);
-            if (pScaleX < 1e-5f || pScaleY < 1e-5f) return null;
+            if (!EnsureTemplate()) return null;
 
-            var bodySprite = body.sprite;
-            float bodyPpu = bodySprite.pixelsPerUnit > 0f ? bodySprite.pixelsPerUnit : 100f;
-            float bodyH = bodySprite.rect.height / bodyPpu * Mathf.Abs(body.transform.lossyScale.y) / pScaleY;
-            if (bodyH < 1e-4f) return null;
-
-            var template = BuildPixels(colorId, out int tw, out int th);
-            if (template == null) return null;
-            float bodyW = bodyH * ((float)tw / th);
+            const float canonicalBodyScale = 0.68f;
+            float bodyW = _templateW / BasePixelsPerUnit * canonicalBodyScale;
+            float bodyH = _templateH / BasePixelsPerUnit * canonicalBodyScale;
+            var hatVisorAnchor = new Vector3(-0.04f, 0.575f, 0f);
+            try
+            {
+                var normalOffset = c.normalBodySprite;
+                hatVisorAnchor += normalOffset != null
+                    ? normalOffset.normalCosmeticOffset
+                    : c.NormalCosmeticOffset;
+            }
+            catch { }
+            var skinAnchor = Vector3.zero;
 
             bool pending = false;
             var specs = new List<AvatarSpec>(4);
 
-            void Add(Sprite? art, SpriteRenderer? sr, Transform? leaf, int order)
+            void Add(Sprite? art, SpriteRenderer? sr, Transform? leaf, Transform? root,
+                Vector3 anchor, int order)
             {
                 if (art == null || sr == null || leaf == null) return;
                 try { if (!sr.enabled) return; } catch { return; }
-                specs.Add(new AvatarSpec { Sprite = art, Renderer = sr, Leaf = leaf, Order = order });
+                specs.Add(new AvatarSpec
+                {
+                    Sprite = art, Renderer = sr, Leaf = leaf, Root = root,
+                    Anchor = anchor, Order = order
+                });
             }
 
             try
@@ -221,10 +257,11 @@ internal static class CrewmateIcon
                         catch { }
                         try { front = c.hat != null ? c.hat.FrontLayer : null; } catch { }
                         try { back = c.hat != null ? c.hat.BackLayer : null; } catch { }
+                        var hatRoot = c.hat != null ? c.hat.transform : null;
                         if (back != null)
-                            try { Add(backIdle != null ? backIdle : back.sprite, back, back.transform, 0); } catch { }
+                            try { Add(backIdle != null ? backIdle : back.sprite, back, back.transform, hatRoot, hatVisorAnchor, 0); } catch { }
                         if (front != null)
-                            try { Add(frontIdle != null ? frontIdle : front.sprite, front, front.transform, 3); } catch { }
+                            try { Add(frontIdle != null ? frontIdle : front.sprite, front, front.transform, hatRoot, hatVisorAnchor, 3); } catch { }
                     }
                 }
             }
@@ -251,7 +288,7 @@ internal static class CrewmateIcon
                                 if (v != null) idle = v.IdleFrame;
                             }
                             catch { }
-                            try { Add(idle != null ? idle : sr.sprite, sr, sr.transform, 2); } catch { }
+                            try { Add(idle != null ? idle : sr.sprite, sr, sr.transform, c.skin != null ? c.skin.transform : null, skinAnchor, 2); } catch { }
                         }
                     }
                 }
@@ -279,51 +316,74 @@ internal static class CrewmateIcon
                                 if (v != null) idle = v.IdleFrame;
                             }
                             catch { }
-                            try { Add(idle != null ? idle : sr.sprite, sr, sr.transform, 4); } catch { }
+                            try { Add(idle != null ? idle : sr.sprite, sr, sr.transform, c.visor != null ? c.visor.transform : null, hatVisorAnchor, 4); } catch { }
                         }
                     }
                 }
             }
             catch { }
 
-            // ── geometry, all in player-local units (y-up, canonical facing) ──
-            Vector3 bodyLocal = pctr.InverseTransformPoint(body.transform.position);
-            float bodyLeft = bodyLocal.x - bodyW * 0.5f;
-            float bodyBottom = bodyLocal.y - bodyH * 0.5f;
-
-            float minX = bodyLeft, maxX = bodyLeft + bodyW;
-            float minY = bodyBottom, maxY = bodyBottom + bodyH;
-            bool pcFlipX = pctr.lossyScale.x < 0f;
-            bool pcFlipY = pctr.lossyScale.y < 0f;
+            // ── geometry, all in the canonical frame (player space, y-up) ──
+            float minX = -bodyW * 0.5f, maxX = bodyW * 0.5f;
+            float minY = -bodyH * 0.5f, maxY = bodyH * 0.5f;
 
             for (int i = 0; i < specs.Count; i++)
             {
                 var sp = specs[i];
                 var art = sp.Sprite;
-                Vector3 center;
-                try { center = pctr.InverseTransformPoint(sp.Leaf.position); }
-                catch { center = bodyLocal; }
-                float lSX = Mathf.Abs(sp.Leaf.lossyScale.x) / pScaleX;
-                float lSY = Mathf.Abs(sp.Leaf.lossyScale.y) / pScaleY;
-                float ppu = art.pixelsPerUnit > 0f ? art.pixelsPerUnit : 100f;
-                float w = art.rect.width / ppu * lSX;
-                float h = art.rect.height / ppu * lSY;
 
-                // InverseTransformPoint already canonicalized the player's facing — a layer
-                // only needs mirroring when IT (or its flip flag) is authored that way.
-                bool flipX = (sp.Leaf.lossyScale.x < 0f) != pcFlipX;
-                try { if (sp.Renderer.flipX) flipX = !flipX; } catch { }
-                bool flipY = (sp.Leaf.lossyScale.y < 0f) != pcFlipY;
+                Vector3 pos;
+                float accX, accY;
+                try
+                {
+                    var root = sp.Root;
+                    Vector3 scl = root != null ? root.localScale : Vector3.one;
+                    scl.x = Mathf.Abs(scl.x);
+                    pos = sp.Anchor;
+                    var rot = Quaternion.identity;
+                    if (root != null && root != sp.Leaf)
+                    {
+                        var nodes = new List<(Vector3 p, Quaternion r, Vector3 s)>(4);
+                        Transform? t = sp.Leaf;
+                        for (; t != null && t != root; t = t.parent)
+                            nodes.Add((t.localPosition, t.localRotation, t.localScale));
+                        if (t == root)
+                        {
+                            for (int n = nodes.Count - 1; n >= 0; n--)
+                            {
+                                var nd = nodes[n];
+                                pos += rot * Vector3.Scale(nd.p, scl);
+                                rot *= nd.r;
+                                scl = Vector3.Scale(scl, nd.s);
+                            }
+                        }
+                        // Leaf not under the root: degrade to anchor-only, as the
+                        // reference does when the path cannot be captured.
+                    }
+                    accX = scl.x;
+                    accY = scl.y;
+                }
+                catch { continue; }
+
+                // Renderer flipX is dropped on purpose — the icon always faces
+                // canonically right, the reference does the same. flipY and authored
+                // negative chain scales still mirror the art.
+                bool flipX = accX < 0f;
+                bool flipY = accY < 0f;
                 try { if (sp.Renderer.flipY) flipY = !flipY; } catch { }
                 try { sp.Tint = sp.Renderer.color; } catch { }
 
-                float offX = (art.rect.width * 0.5f - art.pivot.x) / ppu * lSX;
-                float offY = (art.rect.height * 0.5f - art.pivot.y) / ppu * lSY;
-                if (flipX) offX = -offX;
-                if (flipY) offY = -offY;
+                float ppu = art.pixelsPerUnit > 0f ? art.pixelsPerUnit : 100f;
+                float w = art.rect.width / ppu * Mathf.Abs(accX);
+                float h = art.rect.height / ppu * Mathf.Abs(accY);
 
-                float cx = center.x + offX;
-                float cy = center.y + offY;
+                // Signed pivot offset: a negatively scaled chain mirrors the quad about
+                // the leaf origin; renderer flip flags mirror content in place only.
+                float offX = (art.rect.width * 0.5f - art.pivot.x) / ppu * accX;
+                float offY = (art.rect.height * 0.5f - art.pivot.y) / ppu * accY;
+
+                float cx = pos.x + offX;
+                float cy = pos.y + offY;
                 sp.Local = new Rect(cx - w * 0.5f, cy - h * 0.5f, w, h);
                 sp.FlipX = flipX;
                 sp.FlipY = flipY;
@@ -334,149 +394,35 @@ internal static class CrewmateIcon
                 if (sp.Local.yMax > maxY) maxY = sp.Local.yMax;
             }
 
-            // ── canvas ──
-            float spanX = Mathf.Max(maxX - minX, 1e-4f);
-            float spanY = Mathf.Max(maxY - minY, 1e-4f);
-            float ppuPx = AvatarBodyPx / bodyH;
-            float maxPpu = MaxAvatarPx / Mathf.Max(spanX, spanY);
-            if (ppuPx > maxPpu) ppuPx = maxPpu;
-
-            int cw = Mathf.CeilToInt(spanX * ppuPx) + 4;
-            int ch = Mathf.CeilToInt(spanY * ppuPx) + 4;
-            float ox = minX - 2f / ppuPx;
-            float oy = minY - 2f / ppuPx;
-
-            var canvas = new Color32[cw * ch];
-
-            // Identity body, then cosmetics back-to-front.
-            int bx = Mathf.RoundToInt((bodyLeft - ox) * ppuPx);
-            int by = Mathf.RoundToInt((bodyBottom - oy) * ppuPx);
-            int bw = Mathf.Max(1, Mathf.RoundToInt(bodyW * ppuPx));
-            int bh = Mathf.Max(1, Mathf.RoundToInt(bodyH * ppuPx));
-            BlendNearest(canvas, cw, ch, bx, by, template, tw, th, bw, bh,
-                false, false, new Color32(255, 255, 255, 255));
+            var identityBody = BodySpriteFor(colorId);
+            if (identityBody == null) return null;
+            var bodyRect = new Rect(-bodyW * 0.5f, -bodyH * 0.5f, bodyW, bodyH);
 
             specs.Sort((a, b) => a.Order.CompareTo(b.Order));
+            var layers = new List<AvatarLayer>(specs.Count + 1);
+            var bodyLayer = new AvatarLayer(identityBody, bodyRect, false, false,
+                new Color32(255, 255, 255, 255), BodyOrder);
+            bool bodyAdded = false;
             for (int i = 0; i < specs.Count; i++)
             {
                 var sp = specs[i];
-                int lx = Mathf.RoundToInt((sp.Local.x - ox) * ppuPx);
-                int ly = Mathf.RoundToInt((sp.Local.y - oy) * ppuPx);
-                int lw = Mathf.Max(1, Mathf.RoundToInt((sp.Local.xMax - ox) * ppuPx) - lx);
-                int lh = Mathf.Max(1, Mathf.RoundToInt((sp.Local.yMax - oy) * ppuPx) - ly);
-                var pixels = ReadSpritePixels(sp.Sprite, lw, lh);
-                if (pixels == null) continue;
-                BlendNearest(canvas, cw, ch, lx, ly, pixels, lw, lh, lw, lh,
-                    sp.FlipX, sp.FlipY, sp.Tint);
+                if (!bodyAdded && sp.Order > BodyOrder)
+                {
+                    layers.Add(bodyLayer);
+                    bodyAdded = true;
+                }
+                layers.Add(new AvatarLayer(sp.Sprite, sp.Local, sp.FlipX, sp.FlipY, sp.Tint, sp.Order));
             }
+            if (!bodyAdded) layers.Add(bodyLayer);
 
-            var tex = new Texture2D(cw, ch, TextureFormat.RGBA32, true)
-            {
-                filterMode = FilterMode.Bilinear,
-                wrapMode = TextureWrapMode.Clamp,
-                hideFlags = HideFlags.HideAndDontSave
-            };
-            tex.SetPixels32(canvas);
-            tex.Apply(false, true);
-            var sprite = Sprite.Create(tex, new Rect(0, 0, cw, ch), new Vector2(0.5f, 0.5f), 100f);
-            sprite.hideFlags |= HideFlags.HideAndDontSave;
             resolved = !pending;
-            return sprite;
+            return layers;
         }
         catch
         {
             resolved = false;
             return null;
         }
-    }
-
-    /// <summary>GPU-resamples a sprite's texture region into a plain pixel buffer — game
-    /// sprites are atlas-packed without CPU read access, but a RenderTexture blit can
-    /// crop and scale them.</summary>
-    private static Color32[]? ReadSpritePixels(Sprite sprite, int w, int h)
-    {
-        RenderTexture? rt = null;
-        Texture2D? tmp = null;
-        RenderTexture? prev = null;
-        try
-        {
-            var tex = sprite.texture;
-            if (tex == null || w < 1 || h < 1) return null;
-            var r = sprite.rect;
-            Vector2 scale = new(r.width / tex.width, r.height / tex.height);
-            Vector2 offset = new(r.x / tex.width, r.y / tex.height);
-            rt = RenderTexture.GetTemporary(w, h, 0, RenderTextureFormat.ARGB32);
-            Graphics.Blit(tex, rt, scale, offset);
-            prev = RenderTexture.active;
-            RenderTexture.active = rt;
-            tmp = new Texture2D(w, h, TextureFormat.RGBA32, false) { hideFlags = HideFlags.HideAndDontSave };
-            tmp.ReadPixels(new Rect(0, 0, w, h), 0, 0);
-            tmp.Apply(false, false);
-            return tmp.GetPixels32();
-        }
-        catch
-        {
-            return null;
-        }
-        finally
-        {
-            RenderTexture.active = prev;
-            if (rt != null) RenderTexture.ReleaseTemporary(rt);
-            if (tmp != null) Object.Destroy(tmp);
-        }
-    }
-
-    /// <summary>Alpha-blends a source buffer into the canvas at a pixel rect. The buffer
-    /// either matches the rect exactly (cosmetics) or is point-sampled into it (template).
-    /// Flips mirror within the rect, which — combined with the pivot-negated rect offset —
-    /// mirrors the layer about its pivot, exactly like the world-space original.</summary>
-    private static void BlendNearest(Color32[] dst, int dstW, int dstH, int ox, int oy,
-        Color32[] src, int srcW, int srcH, int bufW, int bufH, bool flipX, bool flipY, Color32 tint)
-    {
-        for (int y = 0; y < bufH; y++)
-        {
-            int dy = oy + y;
-            if (dy < 0 || dy >= dstH) continue;
-            int sy = y * srcH / bufH;
-            if (sy >= srcH) sy = srcH - 1;
-            if (flipY) sy = srcH - 1 - sy;
-            for (int x = 0; x < bufW; x++)
-            {
-                int dx = ox + x;
-                if (dx < 0 || dx >= dstW) continue;
-                int sx = x * srcW / bufW;
-                if (sx >= srcW) sx = srcW - 1;
-                if (flipX) sx = srcW - 1 - sx;
-                var s = src[sy * srcW + sx];
-                if (s.a == 0) continue;
-                int tr = s.r * tint.r / 255;
-                int tg = s.g * tint.g / 255;
-                int tb = s.b * tint.b / 255;
-                int ta = s.a * tint.a / 255;
-                if (ta == 0) continue;
-                int di = dy * dstW + dx;
-                var d = dst[di];
-                float af = ta * (1f / 255f);
-                float ia = 1f - af;
-                dst[di] = new Color32(
-                    (byte)(tr * af + d.r * ia + 0.5f),
-                    (byte)(tg * af + d.g * ia + 0.5f),
-                    (byte)(tb * af + d.b * ia + 0.5f),
-                    (byte)(ta + d.a * ia + 0.5f));
-            }
-        }
-    }
-
-    private static void DestroySprite(Sprite? sprite)
-    {
-        if (sprite == null) return;
-        try
-        {
-            var tex = sprite.texture;
-            Object.Destroy(sprite);
-            if (tex != null) Object.Destroy(tex);
-        }
-        catch { }
     }
 
     private static Sprite? Build(int colorId)
@@ -499,8 +445,6 @@ internal static class CrewmateIcon
         return sprite;
     }
 
-    /// <summary>The recolored template pixels — shared by the plain identity sprite and
-    /// the composed avatar's body layer.</summary>
     private static Color32[]? BuildPixels(int colorId, out int w, out int h)
     {
         w = 0;

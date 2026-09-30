@@ -49,17 +49,14 @@ internal sealed class P2pTransport : IDisposable
     private const int PunchRetryMaxBackoffMs = 30000;
     private const int KeepAliveMs = 10000;
     private const int DeadMs = 45000;
+    private const int PathQuietMs = 12000;
     private const int HelloResendMs = 2000;
-    // 64 × 2s ≈ 128s of HELLO coverage while a path is missing: the budget now
-    // covers the whole not-connected phase (see the resend in Tick), not just
-    // the wait for their first HELLO.
     private const int HelloMaxCount = 64;
     private const int PendingTtlMs = 6000;
     private const int SrflxTtlMs = 120000;
     private const int StunTimeoutMs = 3000;
     private const int StunAttempts = 2;
 
-    // ── limits ──────────────────────────────────────────────────────────────
     private const int MaxTargets = 8;
     private const int MaxOrphans = 16;
     private const int MaxCandidates = 12;
@@ -82,13 +79,8 @@ internal sealed class P2pTransport : IDisposable
     private readonly Dictionary<uint, P2pSession> _byFlow = new();
     private readonly Dictionary<string, Pending> _pending = new(StringComparer.Ordinal);
 
-    /// <summary>Outbound signalling, drained with the lock released. Calling the
-    /// websocket emitter from inside the lock would be a re-entrancy hazard the
-    /// moment that callback ever does anything synchronous.</summary>
     private readonly ConcurrentQueue<(string Sid, string Json)> _outSignals = new();
 
-    /// <summary>Frames that arrived before their sender's HELLO (UDP beats the
-    /// websocket signalling race). Bounded, flushed as soon as a peer registers.</summary>
     private readonly List<(byte[] Pkt, IPEndPoint From, long At)> _orphans = new();
 
     private readonly List<IPEndPoint> _local = new();
@@ -98,9 +90,6 @@ internal sealed class P2pTransport : IDisposable
     private long _localAt;
     private volatile bool _gathering;
     private int _errors;
-    /// <summary>Inbound STUN binding requests seen on this socket, attributed or
-    /// not — paired with the per-session rx in the punch log to tell "packets
-    /// never arrive" from "arrive but fail attribution".</summary>
     private volatile int _stunRxAny;
 
     private sealed class Pending
@@ -126,9 +115,7 @@ internal sealed class P2pTransport : IDisposable
         _signal = signal;
         _stunServers = LoadStunServers();
     }
-
-    // ── lifecycle ───────────────────────────────────────────────────────────
-
+    
     public void Start()
     {
         lock (_lock)
@@ -142,9 +129,6 @@ internal sealed class P2pTransport : IDisposable
                 _udp.Client.SendBufferSize = 1 << 20;
                 try
                 {
-                    // Windows reports ICMP port-unreachable as a SocketException
-                    // out of Receive(), which would otherwise burn one iteration
-                    // of the receive loop per dead STUN server or departed peer.
                     const int SioUdpConnreset = -1744830452;
                     _udp.Client.IOControl(SioUdpConnreset, new byte[] { 0 }, null!);
                 }
@@ -201,9 +185,7 @@ internal sealed class P2pTransport : IDisposable
         }
         foreach (var s in sessions) { try { s.Dispose(); } catch { } }
     }
-
-    // ── peer roster (driven from ServerConnection) ──────────────────────────
-
+    
     public void AddPeer(string sid, int clientId)
     {
         if (_disposed || string.IsNullOrEmpty(sid)) return;
@@ -253,7 +235,6 @@ internal sealed class P2pTransport : IDisposable
         foreach (var s in all) { try { s.Dispose(); } catch { } }
     }
 
-    /// <summary>Re-announce ourselves (websocket reconnect, fresh STUN results).</summary>
     public void ResendHellos()
     {
         try
@@ -271,10 +252,6 @@ internal sealed class P2pTransport : IDisposable
         finally { FlushSignals(); }
     }
 
-    // ── signalling in ───────────────────────────────────────────────────────
-
-    /// <summary>Called from the websocket receive path with the decoded JSON of a
-    /// "P2P:" signal message.</summary>
     public void HandleSignal(string fromSid, string json)
     {
         if (_disposed || string.IsNullOrEmpty(fromSid)) return;
@@ -299,12 +276,10 @@ internal sealed class P2pTransport : IDisposable
             if (_disposed) return;
             if (!_sessions.TryGetValue(fromSid, out var s) || s.Disposed) return;
 
-            // Echo guard — our own HELLO reflected back at us.
             if (dirHex == ToHex(s.Crypto.DirId)) return;
 
             if (s.HasPeerHello && s.PeerDirHex == dirHex)
             {
-                // Idempotent re-HELLO: only the candidate list may have changed.
                 ApplyCandidatesLocked(s, msg.c);
                 return;
             }
@@ -330,8 +305,6 @@ internal sealed class P2pTransport : IDisposable
             ApplyCandidatesLocked(s, msg.c);
             FlushOrphansLocked(s);
 
-            // Always answer, even if we already pushed one (the peer may have
-            // dropped it while their socket was still connecting).
             SendHelloLocked(s);
 
             if (!s.Connected && s.PunchRoundEndsAt == 0) StartPunchLocked(s, reason: "hello");
@@ -340,10 +313,6 @@ internal sealed class P2pTransport : IDisposable
         finally { FlushSignals(); }
     }
 
-    // ── media out ───────────────────────────────────────────────────────────
-
-    /// <summary>Seal one encoded Opus frame and ship it to every peer that has a
-    /// validated path. A peer without a path receives nothing — by design.</summary>
     public void SendAll(byte[] opus)
     {
         if (opus == null || opus.Length == 0) return;
@@ -369,9 +338,6 @@ internal sealed class P2pTransport : IDisposable
         }
     }
 
-    /// <summary>True when a validated UDP path exists for this peer's signalling
-    /// socket id. Used by the Auto transport mode to decide, per peer, whether the
-    /// frame goes out directly or falls back to the server relay.</summary>
     public bool IsConnectedTo(string sid)
     {
         if (string.IsNullOrEmpty(sid)) return false;
@@ -379,10 +345,6 @@ internal sealed class P2pTransport : IDisposable
             return _sessions.TryGetValue(sid, out var s) && s != null && !s.Disposed && s.Connected;
     }
 
-    /// <summary>Seal one frame and ship it to a single peer over the validated path.
-    /// Returns false when there is no path (caller may then relay it instead);
-    /// a socket-level send failure also reports false so the frame is not lost
-    /// silently while the path recovers.</summary>
     public bool TrySendTo(string sid, byte[] opus)
     {
         if (string.IsNullOrEmpty(sid) || opus == null || opus.Length == 0) return false;
@@ -415,8 +377,6 @@ internal sealed class P2pTransport : IDisposable
                    " srflx=" + _srflx.Count + " local=" + _local.Count + " port=" + _port;
         }
     }
-
-    // ── receive path ────────────────────────────────────────────────────────
 
     private void ReceiveLoop()
     {
@@ -505,9 +465,6 @@ internal sealed class P2pTransport : IDisposable
                        " from=" + from + " (first)");
             if (!s.Connected)
             {
-                // Peer-reflexive: their probe proves this address is live even when
-                // it is not the one they advertised (their NAT picked a different
-                // mapping for us than for the STUN server).
                 if (!s.Learned.Contains(from)) s.Learned.Add(from);
                 if (s.Targets.Count < MaxTargets) s.AddTarget(from);
             }
@@ -545,16 +502,23 @@ internal sealed class P2pTransport : IDisposable
 
         if (!s.Crypto.TryOpen(data, out var payload, out uint counter)) return;
 
-        // An authenticated frame proves the reverse path works — adopt it as the
-        // media address immediately rather than waiting for our own probe reply.
         lock (_lock)
         {
             if (s.Disposed || _disposed) return;
-            if (!s.Connected || !EqualsAddress(s.Remote, from))
+            if (!s.Connected)
             {
                 AdoptPathLocked(s, from, reason: "authenticated frame");
+                s.LastInbound = now;
             }
-            s.LastInbound = now;
+            else if (EqualsAddress(s.Remote, from))
+            {
+                s.LastInbound = now;
+            }
+            else if (IsPrivateUpgrade(s.Remote, from) || now - s.LastInbound > PathQuietMs)
+            {
+                AdoptPathLocked(s, from, reason: "authenticated frame (path switch)");
+                s.LastInbound = now;
+            }
             if (s.MediaFrames++ == 0)
                 Logger("[P2P] media rx cid=" + s.ClientId + " sid=" + s.Sid + " (first frame)");
         }
@@ -568,8 +532,46 @@ internal sealed class P2pTransport : IDisposable
         lock (_lock)
         {
             if (s.Disposed || _disposed) return;
-            AdoptPathLocked(s, from, reason: "binding response");
-            s.LastInbound = Environment.TickCount64;
+            long now = Environment.TickCount64;
+            if (s.Connected && !EqualsAddress(s.Remote, from))
+            {
+                if (!IsPrivateUpgrade(s.Remote, from) && now - s.LastInbound <= PathQuietMs)
+                    return;
+                AdoptPathLocked(s, from, reason: "binding response (path switch)");
+            }
+            else
+            {
+                AdoptPathLocked(s, from, reason: "binding response");
+            }
+            s.LastInbound = now;
+        }
+    }
+
+    private static bool IsPrivateUpgrade(IPEndPoint current, IPEndPoint candidate)
+        => IsPrivateAddress(candidate) && !IsPrivateAddress(current);
+
+    private static bool IsPrivateAddress(IPEndPoint ep)
+    {
+        var ip = ep.Address;
+        try
+        {
+            if (ip.IsIPv4MappedToIPv6) ip = ip.MapToIPv4();
+            if (IPAddress.IsLoopback(ip)) return true;
+            if (ip.AddressFamily == AddressFamily.InterNetworkV6)
+            {
+                if (ip.IsIPv6LinkLocal || ip.IsIPv6SiteLocal) return true;
+                var b6 = ip.GetAddressBytes();
+                return (b6[0] & 0xFE) == 0xFC; // ULA fc00::/7
+            }
+            var b = ip.GetAddressBytes();
+            return b[0] == 10
+                || (b[0] == 192 && b[1] == 168)
+                || (b[0] == 172 && (b[1] & 0xF0) == 16)
+                || (b[0] == 169 && b[1] == 254);
+        }
+        catch
+        {
+            return false; // unreadable → treat as public (conservative: quiet-window rule)
         }
     }
 
@@ -582,9 +584,7 @@ internal sealed class P2pTransport : IDisposable
         if (changed)
             Logger("[P2P] connected cid=" + s.ClientId + " sid=" + s.Sid + " via " + from + " (" + reason + ")");
     }
-
-    // ── punch scheduling ────────────────────────────────────────────────────
-
+    
     private void StartPunchLocked(P2pSession s, string reason)
     {
         if (s.Targets.Count == 0) return;
@@ -665,22 +665,9 @@ internal sealed class P2pTransport : IDisposable
                     continue;
                 }
 
-                // Their HELLO is in, but the exchange can still be half-complete:
-                // ours may have been dropped on their side (OnSignal discards
-                // signals from a sid that is not in the roster yet — a roster race
-                // during reconnect churn), and a repeated HELLO gets an idempotent
-                // no-reply there. Without this resend the peer waits forever with
-                // zero targets, never probes, and its NAT never admits us — the
-                // classic "LAN works, every other network is silent". Keep ours
-                // flowing until a path exists; the peer ignores duplicates.
                 if (s.HelloCount < HelloMaxCount && now - s.LastHelloAt >= HelloResendMs)
                     SendHelloLocked(s);
 
-                // Rounds only pace the log line — probing itself never pauses. A
-                // simultaneous-open needs both ends' outbound to overlap, and the
-                // old implementation went completely silent for 5–30s per round,
-                // putting the two sides on disjoint schedules and dooming the
-                // punch even between NATs that would otherwise open.
                 if (now > s.PunchRoundEndsAt)
                 {
                     s.PunchRound++;
@@ -733,7 +720,6 @@ internal sealed class P2pTransport : IDisposable
         foreach (var k in stale) _pending.Remove(k);
     }
 
-    // ── signalling out ──────────────────────────────────────────────────────
 
     private void SendHelloLocked(P2pSession s)
     {
@@ -756,7 +742,6 @@ internal sealed class P2pTransport : IDisposable
         _outSignals.Enqueue((s.Sid, json));
     }
 
-    /// <summary>Drain the outbound signalling queue. Never called with the lock held.</summary>
     private void FlushSignals()
     {
         while (_outSignals.TryDequeue(out var item))
@@ -778,9 +763,6 @@ internal sealed class P2pTransport : IDisposable
         return list.ToArray();
     }
 
-    /// <summary>Replace a session's probe targets with the peer's latest candidate
-    /// list. Replacing matters: addresses from a network the peer has left must not
-    /// crowd out the ones they just moved onto.</summary>
     private bool ApplyCandidatesLocked(P2pSession s, string[]? candidates)
     {
         if (candidates != null) s.PeerCandidates = candidates;
@@ -807,7 +789,6 @@ internal sealed class P2pTransport : IDisposable
         return true;
     }
 
-    /// <summary>Validate + filter one advertised candidate. Returns null to skip.</summary>
     private static IPEndPoint? ParseCandidate(string raw)
     {
         if (!IPEndPoint.TryParse(raw.Trim(), out var ep) || ep == null) return null;
@@ -881,10 +862,6 @@ internal sealed class P2pTransport : IDisposable
             _byFlow.Remove(ToFlowId(s.PeerDirId));
     }
 
-    // ── candidates ──────────────────────────────────────────────────────────
-
-    /// <summary>Re-scan the machine's unicast addresses. Returns true when the set
-    /// changed (wifi ⇄ ethernet, VPN up/down) so callers can re-announce.</summary>
     private bool RefreshLocalCandidates()
     {
         var list = new List<IPEndPoint>();
@@ -909,7 +886,6 @@ internal sealed class P2pTransport : IDisposable
         }
         catch { /* platform quirk — host candidates still include loopback */ }
 
-        // Same-host clients (two instances on one PC for testing) only see this.
         list.Add(new IPEndPoint(IPAddress.Loopback, _port));
 
         bool changed;
@@ -978,8 +954,6 @@ internal sealed class P2pTransport : IDisposable
         finally { _gathering = false; }
     }
 
-    /// <summary>Merge one freshly learned reflexive address and re-announce if it
-    /// is new. Idempotent, so it is safe to call from every STUN query.</summary>
     private void PublishSrflx(IPEndPoint ep)
     {
         bool changed;
@@ -1043,11 +1017,6 @@ internal sealed class P2pTransport : IDisposable
 
             if (mapped != null && IsUsefulSrflx(mapped))
             {
-                // Publish the moment one server answers instead of waiting for the
-                // whole pile: several will be unreachable, and holding the
-                // candidate until the laggards time out delays every punch.
-                // Log which server answered with what — "is STUN lying / dead"
-                // settles from this line instead of from guesswork.
                 Logger("[P2P] STUN " + host + ":" + port + " → " + mapped);
                 PublishSrflx(mapped);
                 return mapped;
@@ -1057,8 +1026,6 @@ internal sealed class P2pTransport : IDisposable
         return null;
     }
 
-    /// <summary>A reflexive address that is just one of our own LAN addresses is
-    /// useless (we already advertise it) — that happens when STUN runs on-LAN.</summary>
     private bool IsUsefulSrflx(IPEndPoint ep)
     {
         if (ep.Address.Equals(IPAddress.Any) || IPAddress.IsLoopback(ep.Address)) return false;
@@ -1123,8 +1090,6 @@ internal sealed class P2pTransport : IDisposable
         }
         return list.ToArray();
     }
-
-    // ── helpers ─────────────────────────────────────────────────────────────
 
     private static bool EqualsAddress(IPEndPoint? a, IPEndPoint? b)
         => a != null && b != null && a.Equals(b);

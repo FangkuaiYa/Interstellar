@@ -100,7 +100,7 @@ public static class SplashScreenPatch
 
         var textTmp = textGo.AddComponent<TextMeshPro>();
         textTmp.text = Get("vc.splash.title", "Interstellar Voice Chat") + $" v{InterstellarPlugin.PluginVersion}" + "\n<size=70%>"
-            + Get("vc.splash.madeBy", "Made by") + " <color=#00ffff>FangkuaiYa</color>, <color=#00ffff>HayaiUme</color>\n"
+            + Get("vc.splash.madeBy", "Made by") + " <color=#00ffff>FangkuaiYa</color>\n"
             + Get("vc.splash.sponsorBy", "Sponsor by") + " <color=#ff44ff>TAIKongguo</color></size>";
         textTmp.fontSize = 2.5f;
         textTmp.fontStyle = FontStyles.Bold;

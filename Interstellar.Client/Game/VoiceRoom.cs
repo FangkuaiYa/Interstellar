@@ -266,6 +266,10 @@ public class VoiceRoom
         _androidSpeaker?.Update();
         _interstellar.DecayFarEnd(Time.deltaTime);
 
+        // Role-mod meeting gag poll (main thread only — reads the quick chat button,
+        // never the chat text; see BlackmailVoiceGate).
+        BlackmailVoiceGate.Poll();
+
         TryUpdateLocalProfile();
 
         _commsSabCheckTimer -= Time.deltaTime;
@@ -279,23 +283,12 @@ public class VoiceRoom
         Vector2? listenerPos = localPlayer ? (Vector2)localPlayer.transform.position : null;
         bool localInVent = localPlayer != null && localPlayer.inVent;
 
-        // Hear through cameras: while watching security cameras, use the
-        // camera's position for distance so nearby players stay audible.
         if (listenerPos.HasValue && VoiceConfig.SyncedRoomSettings.CameraCanHear)
         {
             var camPos = TryGetCameraListenerPosition();
             if (camPos.HasValue) listenerPos = camPos;
         }
 
-        // Android first-join watchdog: if we know about a peer but the relay is
-        // provably dead — not one packet of any kind has come back from them —
-        // resync, then restart. It must NOT fire while the room is empty (that
-        // churns against the next join) and it must NOT fire merely because
-        // nobody has spoken yet: the old test was "anyone's audio level > 0",
-        // which tore down a perfectly healthy room within 5s of joining
-        // whenever the peer happened to be quiet. Heartbeats are independent of
-        // speech, so "have I ever received anything" is the honest signal.
-        // The 8s threshold covers one full heartbeat period with slack.
         if (IsAndroid && !_androidDidFullRestart && listenerPos.HasValue && _clients.Count > 0)
         {
             bool relayAlive = false;
@@ -319,11 +312,6 @@ public class VoiceRoom
                 {
                     if (!_androidDidResync)
                     {
-                        // Cheap first step: re-request the peer list. A missed
-                        // join/setClient broadcast is the common cause and costs
-                        // one packet, whereas a full restart tears down every
-                        // VCPlayer on both ends and is what created the
-                        // "join race" we kept seeing in the logs.
                         _androidDidResync = true;
                         _androidNoRxFrames = 0;
                         InterstellarPlugin.Logger.LogWarning(
@@ -382,21 +370,11 @@ public class VoiceRoom
         _diagTimer -= Time.deltaTime;
         if (_diagTimer <= 0f)
         {
-            // 30s: enough to catch a stalled link, quiet enough not to bury the log.
             _diagTimer = 30f;
             LogDiagnostics();
         }
     }
 
-    /// <summary>
-    /// One line every 30s that answers "which link is broken":
-    ///   tx / txErr  — frames we encoded and sent (0 = our mic never got out)
-    ///   rx          — frames we received (stalls here = sender/VAD/network)
-    ///   buf/target  — jitter cushion level vs its adaptive depth (ms)
-    ///   buf (ms)    — jitter cushion level (near 0 while rx grows = cushion failing)
-    ///   lvl         — level meter, post-buffer (rx grows but lvl=0 = not playing)
-    ///   aud/map/vol — playback gates (all 0 = something muted this client)
-    /// </summary>
     private void LogDiagnostics()
     {
         if (_clients.Count == 0) return;
@@ -522,8 +500,14 @@ public class VoiceRoom
         await _interstellar.WatchLobbyBrowser(watch);
     }
 
+    /// <summary>The control socket must be up before a publish is attempted: the
+    /// public-lobby sync waits on this instead of consuming a change that Emit
+    /// would silently drop on a socket that is still connecting.</summary>
+    public bool CanPublishLobby => _interstellar.IsControlSocketOpen;
+
     public async System.Threading.Tasks.Task PublishLobbyAsync(string code, PublicLobbyManager.LobbyInfo info)
     {
+        InterstellarPlugin.Logger?.LogInfo("[VC] Lobby publish emitted");
         await _interstellar.PublishLobby(code, info);
     }
 

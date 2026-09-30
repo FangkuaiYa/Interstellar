@@ -11,8 +11,9 @@ namespace Interstellar.Voice;
 /// Per-player volume host. The standalone F3 window is gone: F3 opens the settings
 /// panel on the PLAYER VOLUME rail entry instead, and the panel builds the rows itself
 /// through <see cref="BuildRow"/>. What stays here is the data path — the player
-/// snapshot, the slider/AUTO-chip construction (manual edit still wins over auto) and
-/// the live meter feed, which the panel drives from its own tick while its rows exist.
+/// snapshot, the slider construction (the page's global auto-volume switch makes
+/// sliders read-only) and the live meter feed, which the panel drives from its own
+/// tick while its rows exist.
 /// </summary>
 public class PlayerVolumeWindow : MonoBehaviour
 {
@@ -82,10 +83,11 @@ public class PlayerVolumeWindow : MonoBehaviour
         }
     }
 
-    /// <summary>Row factory for the settings panel: the same per-player slider, value
-    /// pill and AUTO chip the F3 window drew — manual edit still drops the auto flag
-    /// first so <see cref="VCPlayer.SetVolume"/> actually takes the value — parented to
-    /// the panel's pane at the panel's row height.</summary>
+    /// <summary>Row factory for the settings panel: the per-player slider, value pill
+    /// and live meter — parented to the panel's pane at the panel's row height. Auto
+    /// volume is the page's global switch now: while <see cref="VoiceConfig.AutoVolume"/>
+    /// is on, the slider renders read-only here and <see cref="VCPlayer.SetVolume"/>
+    /// refuses the write as well.</summary>
     internal static VoiceUiKit.PlayerVolumeRow BuildRow(
         RectTransform pane, VCPlayer p, string displayName, float paneW, float y, float height)
     {
@@ -96,22 +98,12 @@ public class PlayerVolumeWindow : MonoBehaviour
             () => p.Volume,
             v =>
             {
-                if (VoiceConfig.GetPlayerAutoVolume(pname)) VoiceConfig.SetPlayerAutoVolume(pname, false);
                 p.SetVolume(v);
                 VoiceConfig.SetPlayerVolume(pname, v);
             },
             () => VoiceConfig.SetPlayerVolume(pname, p.Volume),
             pc, VMin, VMax,
-            () => !VoiceConfig.GetPlayerAutoVolume(pname),
-            () => VoiceConfig.GetPlayerAutoVolume(pname),
-            () =>
-            {
-                // The chip is the only way in (and out) of auto-volume: flipping it off
-                // also pins the level auto had settled on so it survives a restart.
-                bool was = VoiceConfig.GetPlayerAutoVolume(pname);
-                VoiceConfig.SetPlayerAutoVolume(pname, !was);
-                if (was) VoiceConfig.SetPlayerVolume(pname, p.Volume);
-            })
+            () => !VoiceConfig.AutoVolume)
             .Build(pane, displayName, paneW, y, height);
         row.PlayerId = p.PlayerId;
         return row;

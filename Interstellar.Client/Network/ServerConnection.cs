@@ -1040,8 +1040,18 @@ internal class ServerConnection : IConnectionContext, IDisposable
         }
     }
 
+    /// <summary>True while the control socket can carry emits. SendRaw drops frames
+    /// silently before it is up (fresh room, reconnect), so the lobby publisher
+    /// gates its one-shot state change on this.</summary>
+    public bool IsControlSocketOpen => _sws?.State == WebSocketState.Open;
+
     public async Task PublishLobby(string code, PublicLobbyManager.LobbyInfo info)
-    { Emit("lobby", code, new { title = info.title, host = info.host, current_players = info.current_players, max_players = info.max_players, language = info.language, mods = info.mods, isPublic = true, isPublic2 = true, server = info.server, gameState = info.gameState }); await Task.CompletedTask; }
+    {
+        if (!IsControlSocketOpen)
+            InterstellarPlugin.Logger?.LogWarning("[VC] PublishLobby dropped: control socket not open");
+        Emit("lobby", code, new { title = info.title, host = info.host, current_players = info.current_players, max_players = info.max_players, language = info.language, mods = info.mods, isPublic = true, isPublic2 = true, server = info.server, gameState = info.gameState });
+        await Task.CompletedTask;
+    }
     public async Task RemoveLobby(string code) { Emit("remove_lobby", code); await Task.CompletedTask; }
     public async Task JoinLobby(int id, Action<int, string, string> cb) { cb(1, "", ""); await Task.CompletedTask; }
     public async Task WatchLobbyBrowser(bool w)

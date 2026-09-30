@@ -27,12 +27,13 @@ public static class VoiceSettingsPanel
     private const float SmoothScrollRate = 18f;
     private const float ScrollbarMinThumbHeight = 30f;
 
-    // Seven rail entries: KEYBINDS was merged into DEVICES (its own entry pushed the
-    // rail past its height), and its rows now live at the bottom of that category.
+    // Seven rail entries: the old DEVICES slot became KEYBINDS — the microphone and
+    // speaker pickers moved to AUDIO, and only the chord list stays here. KEYBINDS
+    // still drops off the rail on Android (chords need a hardware keyboard).
     private static readonly string[] CategoryKeys =
     {
         "vc.cat.audio",
-        "vc.cat.devices",
+        "vc.cat.keybinds",
         "vc.cat.volume",
         "vc.cat.lobby",
         "vc.settings.room",
@@ -43,7 +44,7 @@ public static class VoiceSettingsPanel
     private static readonly string[] CategoryFallbacks =
     {
         "AUDIO",
-        "DEVICES",
+        "KEYBINDS",
         "Player Volume",
         "Public Lobby",
         "Room",
@@ -54,7 +55,7 @@ public static class VoiceSettingsPanel
     // Public so the F2/F3 chord readers (PublicLobbyWindow / PlayerVolumeWindow) can
     // ask the panel to open on their category instead of owning a window each.
     public const int CatAudio = 0;
-    public const int CatDevices = 1;
+    public const int CatKeybinds = 1;
     public const int CatVolume = 2;
     public const int CatLobby = 3;
     public const int CatRoom = 4;
@@ -63,17 +64,20 @@ public static class VoiceSettingsPanel
 
     private static bool IsAndroid => Application.platform == RuntimePlatform.Android;
 
-    /// <summary>Category ids in rail order — one entry per key. (KEYBINDS needs a
-    /// hardware keyboard, so its rows are skipped inside DEVICES on Android, see
-    /// <see cref="BuildDevices"/>.)</summary>
-    private static readonly int[] CategoryMap = Enumerable.Range(0, CategoryKeys.Length).ToArray();
+    // Rail index → category const, so an entry can drop out of the rail (KEYBINDS on
+    // Android) while the public Cat* constants keep their fixed values.
+    private static readonly int[] CategoryMap = BuildCategoryMap();
+
+    private static int[] BuildCategoryMap()
+    {
+        var map = Enumerable.Range(0, CategoryKeys.Length).ToArray();
+        if (IsAndroid) map = map.Where(c => c != CatKeybinds).ToArray();
+        return map;
+    }
 
     /// <summary>Exact option list from the legacy window (Game/VoiceSettingsWindow.cs).</summary>
     private static readonly string[] Langs = { "en", "zh_CN", "ja", "ko", "ru", "es", "pt_BR", "Other" };
 
-    /// <summary>What the language stepper shows — each language by its own name, the
-    /// catch-all through the locale (it was the raw code "en" before, unreadable in
-    /// every language). The stored and advertised value stays the raw code.</summary>
     private static readonly string[] LangNames =
         { "English", "中文", "日本語", "한국어", "Русский", "Español", "Português", "" };
 
@@ -98,6 +102,16 @@ public static class VoiceSettingsPanel
     private static Image? _scrollbarThumbImage;
     private static bool _scrollbarDragging;
     private static float _scrollbarDragOffset;
+
+    // Whole-pane drag scrolling (touch has no wheel on Android): a press inside the
+    // pane is held back until we know whether it is a tap, a vertical scroll gesture,
+    // or a horizontal control drag (slider).
+    private static bool _panePending;
+    private static bool _paneDragging;
+    private static float _paneDownX;
+    private static float _paneDownY;
+    private static Vector2 _paneLastLocal;
+    private static float PaneDragThreshold => Mathf.Clamp(Screen.height * 0.015f, 10f, 45f);
 
     private static bool ShellAlive => _shell != null && _shell.Root != null;
     private static bool _shown;
@@ -129,6 +143,8 @@ public static class VoiceSettingsPanel
         _scroll = 0f;
         _scrollTarget = 0f;
         CancelScrollbarDrag();
+        _panePending = false;
+        _paneDragging = false;
         _shell.PaneRoot.anchoredPosition = Vector2.zero;
         _animT = 0f;
         _shown = true;
@@ -138,15 +154,9 @@ public static class VoiceSettingsPanel
 
         VoiceUiKit.RaiseAbove(_shell.RootRect);
 
-        // Opening the panel decides what the two former window hosts do: browsing only
-        // starts once the PUBLIC LOBBY category is actually the one on screen (SyncHosts
-        // runs again from the rail handler when the selection moves).
         SyncHosts();
     }
 
-    /// <summary>Opens the panel on a specific rail entry — what F2 and F3 do instead of
-    /// owning a window each. The caller opens the panel first (VoiceSettingsWindow
-    /// .OpenCategory); if that open failed, there is no rail to move.</summary>
     public static void SelectCategory(int cat)
     {
         if (!IsOpen || _rail == null) return;
@@ -155,17 +165,11 @@ public static class VoiceSettingsPanel
         _rail.Select(idx);   // fires OnSelect (rebuild + SyncHosts) only when it moves
     }
 
-    /// <summary>True while the panel is open on the given category — F2/F3 use it to
-    /// decide between "jump there" and "close the panel".</summary>
     public static bool IsOnCategory(int cat)
         => IsOpen && _rail != null && _rail.Selected >= 0
            && _rail.Selected < CategoryMap.Length
            && CategoryMap[_rail.Selected] == cat;
 
-    /// <summary>The two hosts that used to own windows now live inside this panel: the
-    /// lobby list is subscribed to only while its category is on screen (the old F2
-    /// window connected on open and dropped the socket on close), and the per-player
-    /// volume host is told when its rows are the ones on display.</summary>
     private static void SyncHosts()
     {
         int cat = -1;
@@ -189,9 +193,6 @@ public static class VoiceSettingsPanel
         _rail.OnSelect = _ =>
         {
             _rebuildRequested = false;
-            // SyncHosts first: entering PUBLIC LOBBY starts the socket, whose status
-            // becomes "Connecting..." synchronously, so the rows built right after
-            // already read the fresh status instead of a stale one.
             SyncHosts();
             RebuildRows(true);
         };
@@ -259,12 +260,10 @@ public static class VoiceSettingsPanel
 
     public static void Hide()
     {
-        // A hidden panel cannot keep listening for a key — end the capture first so
-        // IsCapturingKey does not stay true behind the closed window.
         VoiceUiKit.RebindRow.CancelCapture();
         CancelScrollbarDrag();
-        // Closing the panel ends the tests: the meter is gone, so a capture handle
-        // left open would only keep the mic busy (and lit) for no visible reason.
+        _panePending = false;
+        _paneDragging = false;
         VoiceDeviceTest.StopMicTest();
         _rebuildRequested = false;
         _speakerTestShown = false;
@@ -280,8 +279,6 @@ public static class VoiceSettingsPanel
             _shell.Root.SetActive(false);
         }
 
-        // Closing the panel ends the lobby browsing too: the socket follows its
-        // category, exactly as the old F2 window dropped its connection on close.
         SyncHosts();
     }
 
@@ -300,6 +297,8 @@ public static class VoiceSettingsPanel
     {
         VoiceUiKit.RebindRow.CancelCapture();
         CancelScrollbarDrag();
+        _panePending = false;
+        _paneDragging = false;
         VoiceDeviceTest.StopMicTest();
         _shown = false;
         if (_shell != null)
@@ -320,14 +319,9 @@ public static class VoiceSettingsPanel
         _scrollbarTrackImage = null;
         _scrollbarThumbImage = null;
 
-        // The shell is gone with its rows: without this the lobby socket would stay
-        // subscribed (and ShowWindow true) behind a panel that no longer exists.
         SyncHosts();
     }
 
-    // ========================================================
-    //  Entry list
-    // ========================================================
     private sealed class Entry
     {
         public string Key = "";
@@ -350,7 +344,7 @@ public static class VoiceSettingsPanel
         switch (CategoryMap[cat])
         {
             case CatAudio: BuildAudio(defs); break;
-            case CatDevices: BuildDevices(defs); break;
+            case CatKeybinds: BuildKeybinds(defs); break;
             case CatVolume: BuildVolume(defs); break;
             case CatLobby: BuildLobby(defs); break;
             case CatRoom: BuildRoom(defs); break;
@@ -434,9 +428,6 @@ public static class VoiceSettingsPanel
         }
     }
 
-    // ========================================================
-    //  Entry builders
-    // ========================================================
     private static string T(string key, string fallback) => TranslationHelper.Get(key, fallback);
 
     private static string Help(string id, string fallback)
@@ -545,12 +536,6 @@ public static class VoiceSettingsPanel
         });
     }
 
-    /// <summary>One chord per row: clicking the button arms the capture and the next key
-    /// press — keyboard or mouse button — becomes the binding, with whatever modifiers
-    /// are held at that moment stored alongside it (<c>LeftControl+M</c>). The row reads
-    /// and writes whole chord strings through <see cref="VoiceConfig.GetChord"/> /
-    /// <see cref="VoiceConfig.SetChord"/>; see <see cref="VoiceUiKit.RebindRow"/> for
-    /// Esc/Delete/Cancel handling.</summary>
     private static void AddRebind(
         List<Entry> defs,
         string key,
@@ -601,9 +586,6 @@ public static class VoiceSettingsPanel
         });
     }
 
-    // ========================================================
-    //  Categories
-    // ========================================================
     private static readonly Func<float, string> Pct =
         v => $"<color=#22D3EE>{v * 100f:0}%</color>";
     private static readonly Func<float, string> Distance =
@@ -624,10 +606,10 @@ public static class VoiceSettingsPanel
             Help("masterVolume", "Overall playback volume for every other player. 100% is the normal level."));
 
         // "Player Volume" is its own rail category now (CatVolume) — no jumper row.
-    }
 
-    private static void BuildDevices(List<Entry> defs)
-    {
+        // The microphone/speaker pickers moved here from the old DEVICES slot,
+        // which became the KEYBINDS rail entry.
+        AddSection(defs, "vc.cat.devices", "DEVICES");
         if (VoiceConfig.DeviceSelectionSupported)
         {
             defs.Add(new Entry
@@ -658,9 +640,6 @@ public static class VoiceSettingsPanel
                         Help("speaker", "Which output device the voice chat plays through. Pick Default to use the system default device."))
             });
 
-            // ── Device tests ────────────────────────────────────────────
-            // Live input level: reads the standalone test capture in the menu,
-            // or the room's mic level once a game has one open.
             defs.Add(new Entry
             {
                 Key = "vc.settings.micLevel",
@@ -705,11 +684,6 @@ public static class VoiceSettingsPanel
             AddInfo(defs, "vc.settings.noDeviceSupport",
                 "Device selection is not supported on this platform.");
         }
-
-        // KEYBINDS lives at the bottom of this category — a rail entry of its own
-        // pushed the left column past its height. Still skipped on Android, where
-        // that entry never appeared either (chords need a hardware keyboard).
-        if (!IsAndroid) BuildKeybinds(defs);
     }
 
     private static int DeviceIndex(string current, List<string> devices)
@@ -775,14 +749,10 @@ public static class VoiceSettingsPanel
             help,
             enabled: () => IsHost);
 
-    /// <summary>KEYBINDS rows — now the lower half of the DEVICES category, because a
-    /// rail entry of its own pushed the left column past its height: chords grouped
-    /// into Windows and Quick Actions. Never built on Android: that rail entry was
-    /// dropped there before the merge (chords need a hardware keyboard), and its rows
-    /// stay out of DEVICES for the same reason.</summary>
     private static void BuildKeybinds(List<Entry> defs)
     {
-        AddSection(defs, "vc.cat.keybinds", "KEYBINDS");
+        // No leading "KEYBINDS" title — the rail entry already says it; start with
+        // the first group header.
         AddSection(defs, "vc.settings.keybinds.windows", "Windows");
 
         AddRebind(defs, "vc.settings.keybinds.settings", "Open Voice Settings",
@@ -822,17 +792,31 @@ public static class VoiceSettingsPanel
     private static bool _lobbyInfoShown;
     /// <summary>Height of the revealed info paragraph (the old window's Info overlay).</summary>
     private const float LobbyInfoH = 92f;
+    /// <summary>Lobby rows carry a title plus a wrapped details line, taller than the
+    /// standard 72 so nothing ellipsizes out of the row.</summary>
+    private const float LobbyRowH = 96f;
 
-    /// <summary>
-    /// PLAYER VOLUME — the rows the old F3 window drew, built by the panel instead: one
-    /// slider row per player in the voice room. The data path (volume persistence, AUTO
-    /// chip, manual-wins-over-auto, live meters) still belongs to PlayerVolumeWindow —
-    /// see <see cref="PlayerVolumeWindow.BuildRow"/>. The entry key carries identity,
-    /// never the level, so dragging a slider never re-triggers the signature rebuild
-    /// while a join / leave / rename does.
-    /// </summary>
     private static void BuildVolume(List<Entry> defs)
     {
+        AddToggle(defs, "vc.player.autoVolume", "Auto Volume",
+            () => VoiceConfig.AutoVolume,
+            v =>
+            {
+                VoiceConfig.AutoVolume = v;
+                if (!v)
+                {
+                    // Turning it off pins the levels auto settled on so they survive a restart.
+                    try
+                    {
+                        foreach (var p in PlayerVolumeWindow.SnapshotPlayers())
+                            VoiceConfig.SetPlayerVolume(p.PlayerName, p.Volume);
+                    }
+                    catch { }
+                }
+            },
+            Help("playerAutoVolume",
+                "Keeps everyone's volume at a steady level automatically. While it is on, the sliders below are read-only."));
+
         var players = PlayerVolumeWindow.SnapshotPlayers();
         if (players.Count == 0)
         {
@@ -875,7 +859,8 @@ public static class VoiceSettingsPanel
             "Click a lobby to copy its room code, then join from the Among Us title screen. Grey rows are in a game. Refresh reloads the list.");
 
         // Status row carrying the Refresh button: the copy request keeps its live
-        // status there too, exactly like the window's status line.
+        // status there too, exactly like the window's status line. Narrow button +
+        // wrapping label so long statuses ("Error: …") are never ellipsized away.
         defs.Add(new Entry
         {
             Key = "lobby.status|" + status,
@@ -884,8 +869,9 @@ public static class VoiceSettingsPanel
                 {
                     PublicLobbyWindow.Instance?.Refresh();
                     _rebuildRequested = true;
-                })
-                .Build(pane, status, T("vc.settings.refresh", "Refresh"), paneW, y, RowH)
+                }, null, 130f)
+                .Build(pane, status, T("vc.settings.refresh", "Refresh"), paneW, y, RowH,
+                    wrapLabel: true)
         });
 
         AddToggle(defs, "vc.lobby.info", "Info",
@@ -905,7 +891,9 @@ public static class VoiceSettingsPanel
         for (int i = 0; i < lobbies.Count; i++)
         {
             var lobby = lobbies[i]; // body-scoped: the Build closure captures this copy
-            bool canCopy = lobby.gameState == 1;
+            // BCL's wire enum: 0 = in the lobby (joinable), anything else = in a
+            // game — and the server refuses join_lobby for those anyway.
+            bool canCopy = lobby.gameState == 0;
             string title = PublicLobbyWindow.Truncate(lobby.title, 24);
             string details = PublicLobbyWindow.BuildDetails(lobby);
             string button = !canCopy
@@ -916,12 +904,14 @@ public static class VoiceSettingsPanel
 
             defs.Add(new Entry
             {
-                Key = $"lobby.{lobby.id}.{lobby.current_players}.{lobby.gameState}.{button}",
-                Height = RowH,
+                // The code enters the Key so a row re-renders the moment a
+                // background fetch learns it (Signature hashes the Keys).
+                Key = $"lobby.{lobby.id}.{lobby.current_players}.{lobby.gameState}.{button}.{lobby.code}",
+                Height = LobbyRowH,
                 Build = (pane, paneW, y) => new VoiceUiKit.ActionRow(
-                        () => PublicLobbyWindow.Instance?.RequestLobbyCode(lobby.id))
+                        () => PublicLobbyWindow.Instance?.CopyLobbyCode(lobby.id), null, 130f)
                     .Build(pane, $"<b>{title}</b>\n<color=#7C8CA3>{details}</color>",
-                        button, paneW, y, RowH)
+                        button, paneW, y, LobbyRowH, wrapLabel: true)
             });
         }
     }
@@ -947,7 +937,7 @@ public static class VoiceSettingsPanel
         {
             var lobbies = PublicLobbyManager.CachedLobbies;
             if (lobbies == null) return new List<PublicLobbyManager.LobbyInfo>();
-            return lobbies.OrderBy(l => l.gameState == 1 ? 0 : 1).ToList();
+            return lobbies.OrderBy(l => l.gameState == 0 ? 0 : 1).ToList();
         }
         catch
         {
@@ -1243,13 +1233,19 @@ public static class VoiceSettingsPanel
 
     private static bool HandleScrollInput()
     {
-        if (_shell == null || _scrollbarRoot == null || !_scrollbarRoot.gameObject.activeSelf)
+        if (_shell == null)
         {
+            _panePending = false;
+            _paneDragging = false;
             CancelScrollbarDrag();
             return false;
         }
 
-        if (_scrollbarDragging)
+        bool scrollbarLive = _scrollbarRoot != null && _scrollbarRoot.gameObject.activeSelf;
+        if (!scrollbarLive)
+            CancelScrollbarDrag();
+
+        if (scrollbarLive && _scrollbarDragging)
         {
             if (!Input.GetMouseButton(0))
             {
@@ -1264,7 +1260,8 @@ public static class VoiceSettingsPanel
         bool inputBusy = _activeRow != null || VoiceUiKit.IsCapturingKey;
         if (inputBusy)
             _scrollTarget = _scroll;
-        if (!inputBusy && Input.GetMouseButtonDown(0) && VoiceUiKit.Contains(_scrollbarRoot))
+        if (scrollbarLive && _scrollbarRoot != null && !inputBusy
+            && Input.GetMouseButtonDown(0) && VoiceUiKit.Contains(_scrollbarRoot))
         {
             if (!TryGetScrollbarPointerFromTop(out float pointerFromTop)) return true;
             float thumbTop = _scrollbarThumb != null ? -_scrollbarThumb.anchoredPosition.y : 0f;
@@ -1283,6 +1280,9 @@ public static class VoiceSettingsPanel
             return true;
         }
 
+        if (HandlePaneDrag(inputBusy))
+            return true;
+
         if (!inputBusy && VoiceUiKit.Contains(_shell.PaneClip))
         {
             if (Input.GetMouseButtonDown(0))
@@ -1292,6 +1292,95 @@ public static class VoiceSettingsPanel
                 _scrollTarget = Mathf.Clamp(_scrollTarget - delta * RowH, 0f, MaxScroll());
         }
         return false;
+    }
+
+    /// <summary>
+    /// Whole-pane drag scrolling (touch devices have no wheel, so on Android the page
+    /// itself must be the scroller). Rows act on press, so a press inside the pane is
+    /// deferred: released without moving it dispatches to the rows on the up frame (a
+    /// tap), moved vertically past a device-scaled threshold it becomes a scroll the
+    /// rows never see, moved horizontally past the threshold it is handed to the rows
+    /// late so sliders can still grab. Returns true while the press belongs to the page
+    /// or is still undecided, so HandleInput does not dispatch it.
+    /// </summary>
+    private static bool HandlePaneDrag(bool inputBusy)
+    {
+        if (_shell == null)
+        {
+            _panePending = false;
+            _paneDragging = false;
+            return false;
+        }
+
+        if (_paneDragging)
+        {
+            if (!Input.GetMouseButton(0))
+            {
+                _paneDragging = false;
+                return false;
+            }
+            if (VoiceUiKit.LocalPoint(_shell!.PaneClip, out var local))
+            {
+                float dy = local.y - _paneLastLocal.y;
+                _paneLastLocal = local;
+                _scrollTarget = Mathf.Clamp(_scrollTarget + dy, 0f, MaxScroll());
+                _scroll = _scrollTarget; // direct finger follow, no easing
+            }
+            return true;
+        }
+
+        if (_panePending)
+        {
+            if (!Input.GetMouseButton(0))
+            {
+                _panePending = false;
+                DispatchPressToRows(); // tap: rows fire on the up frame
+                return true;
+            }
+            float dx = Input.mousePosition.x - _paneDownX;
+            float dy = Input.mousePosition.y - _paneDownY;
+            float threshold = PaneDragThreshold;
+            if (Mathf.Abs(dy) > threshold && Mathf.Abs(dy) >= Mathf.Abs(dx))
+            {
+                _panePending = false;
+                _paneDragging = true;
+                if (VoiceUiKit.LocalPoint(_shell.PaneClip, out var start))
+                    _paneLastLocal = start;
+                return true;
+            }
+            if (Mathf.Abs(dx) > threshold)
+            {
+                _panePending = false;
+                DispatchPressToRows(); // horizontal control gesture (slider): hand it over
+                return true;
+            }
+            return true; // undecided: hold the press back
+        }
+
+        // Only defer where there is something to scroll; when the content fits, keep the
+        // original immediate down-frame dispatch so taps behave exactly as before.
+        if (!inputBusy && MaxScroll() > 0.5f
+            && Input.GetMouseButtonDown(0) && VoiceUiKit.Contains(_shell.PaneClip))
+        {
+            _panePending = true;
+            _paneDownX = Input.mousePosition.x;
+            _paneDownY = Input.mousePosition.y;
+            _scrollTarget = _scroll;
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Dispatches a deferred press to the rows exactly as HandleInput does on its down
+    /// frame (rows re-check their own hit areas), then picks up any row that claims a
+    /// drag; HandleInput's up branch releases it within the same frame for taps.
+    /// </summary>
+    private static void DispatchPressToRows()
+    {
+        if (_shell == null || !VoiceUiKit.Contains(_shell.PaneClip)) return;
+        for (int i = 0; i < _rows.Count; i++) _rows[i].OnMouseDown();
+        _activeRow = FindDragging();
     }
 
     private static bool TryGetScrollbarPointerFromTop(out float pointerFromTop)
@@ -1325,7 +1414,7 @@ public static class VoiceSettingsPanel
         _scrollTarget = VoiceSettingsScrollPolicy.Clamp(_scrollTarget, maxScroll);
         _scroll = VoiceSettingsScrollPolicy.Clamp(_scroll, maxScroll);
 
-        if (!_scrollbarDragging)
+        if (!_scrollbarDragging && !_paneDragging)
             _scroll = VoiceSettingsScrollPolicy.Advance(
                 _scroll,
                 _scrollTarget,

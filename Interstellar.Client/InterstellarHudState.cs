@@ -23,6 +23,7 @@ public static class InterstellarHudState
 
     private static bool _lastPublicLobbyState;
     private static int _lastPublicLobbyPlayers;
+    private static string _lastPublicLobbyCode = "";
 
     internal static void Init()
     {
@@ -58,23 +59,73 @@ public static class InterstellarHudState
         _lastSentSettings.Apply(cur);
     }
 
+    // Room whose advertisement flag was already auto-reset — one shot per room.
+    private static string _publicLobbyResetCode = "";
+
+    /// <summary>Game state last published, in BCL's wire enum (-1 = never).</summary>
+    private static int _lastPublicLobbyGameState = -1;
+
     internal static void TrySyncPublicLobby()
     {
         if (AmongUsClient.Instance == null || !AmongUsClient.Instance.AmHost) return;
         var room = VoiceRoom.Current;
-        if (room == null) return;
+        if (room == null)
+        {
+            // Outside a room there is no sync identity: forget it so a rejoin of
+            // the SAME room re-advertises (the server forgets lobbies on disconnect).
+            _lastPublicLobbyState = false;
+            _lastPublicLobbyPlayers = 0;
+            _lastPublicLobbyCode = "";
+            _lastPublicLobbyGameState = -1;
+            return;
+        }
+
+        string code = AmongUsClient.Instance.GameId.ToString();
+
+        // A brand-new room starts unlisted: the option auto-resets to off and the
+        // host opts this room in themselves — the publish then fires from their
+        // toggle, long after the room's control socket is up.
+        if (code != _publicLobbyResetCode)
+        {
+            _publicLobbyResetCode = code;
+            if (VoiceConfig.PublicLobbyEnabled) VoiceConfig.PublicLobbyEnabled = false;
+        }
+
+        // BCL's wire enum (join_lobby hands out codes ONLY for 0 and the browser
+        // greys every other state): 0=Lobby 1=Tasks 2=Discussion. Publish the
+        // REAL state — a mid-game room that keeps claiming Lobby advertises codes
+        // that cannot be used.
+        int gameState;
+        bool inMeeting = false;
+        try { inMeeting = MeetingHud.Instance != null; } catch { }
+        if (inMeeting) gameState = 2; // DISCUSSION
+        else gameState = AmongUsClient.Instance.GameState
+             == InnerNet.InnerNetClient.GameStates.Joined ? 0 : 1; // LOBBY : TASKS
 
         bool wantPublic = VoiceConfig.PublicLobbyEnabled;
         int curPlayers = 0;
         foreach (var p in PlayerControl.AllPlayerControls) if (p != null) curPlayers++;
 
-        if (wantPublic == _lastPublicLobbyState && curPlayers == _lastPublicLobbyPlayers) return;
+        // The control socket carries the publish, and SendRaw drops the frame
+        // silently before it is up (a freshly created room is still connecting).
+        // Wait WITHOUT consuming the state change so the next frame retries.
+        if (!room.CanPublishLobby) return;
+
+        // The room code is part of the sync identity: leaving one room and creating
+        // another keeps both the flag and the player count identical (a solo test
+        // room is always one player), which used to skip the republish forever.
+        if (wantPublic == _lastPublicLobbyState
+            && curPlayers == _lastPublicLobbyPlayers
+            && gameState == _lastPublicLobbyGameState
+            && code == _lastPublicLobbyCode) return;
+        bool wasPublic = _lastPublicLobbyState;
         _lastPublicLobbyState = wantPublic;
         _lastPublicLobbyPlayers = curPlayers;
+        _lastPublicLobbyCode = code;
+        _lastPublicLobbyGameState = gameState;
 
         if (wantPublic)
         {
-            var code = AmongUsClient.Instance.GameId.ToString();
             _ = room.PublishLobbyAsync(code, new PublicLobbyManager.LobbyInfo
             {
                 title = VoiceConfig.PublicLobbyTitle,
@@ -82,14 +133,14 @@ public static class InterstellarHudState
                 current_players = curPlayers,
                 max_players = GameOptionsManager.Instance?.currentNormalGameOptions?.MaxPlayers ?? 10,
                 language = VoiceConfig.PublicLobbyLanguage,
-                mods = "Vanilla",
+                mods = "Interstellar",
                 server = VoiceConfig.GetActiveServerURL(),
-                gameState = 1,
+                gameState = gameState,
             });
         }
-        else
+        else if (wasPublic)
         {
-            var code = AmongUsClient.Instance.GameId.ToString();
+            // Only retract what we actually advertised.
             _ = room.RemoveLobbyAsync(code);
         }
     }

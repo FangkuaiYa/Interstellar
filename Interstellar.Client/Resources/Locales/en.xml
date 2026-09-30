@@ -80,6 +80,7 @@
   <string name="vc.common.on">ON</string>
   <string name="vc.common.off">OFF</string>
   <string name="vc.player.auto">Auto</string>
+  <string name="vc.player.autoVolume">Auto Volume</string>
   <string name="vc.cat.audio">AUDIO</string>
   <string name="vc.cat.devices">DEVICES</string>
   <string name="vc.cat.keybinds">KEYBINDS</string>
@@ -88,7 +89,8 @@
   <string name="vc.settings.open">Open</string>
   <string name="vc.settings.help.micVolume">Input gain for your microphone. 100% is the normal level; raise it only if other players say you are too quiet.</string>
   <string name="vc.settings.help.masterVolume">Overall playback volume for every other player. 100% is the normal level.</string>
-  <string name="vc.settings.help.playerVolume">Set the volume of individual players and turn on auto-volume. Opens the F3 window.</string>
+  <string name="vc.settings.help.playerAutoVolume">Keeps everyone's volume at a steady level automatically. While it is on, the sliders below are read-only.</string>
+  <string name="vc.settings.help.playerVolume">Set the volume of individual players. Opens the F3 window.</string>
   <string name="vc.settings.help.microphone">Which microphone the voice chat captures. Pick Default to use the system default device.</string>
   <string name="vc.settings.help.speaker">Which output device the voice chat plays through. Pick Default to use the system default device.</string>
   <string name="vc.settings.help.maxChatDistance">How far away other players can still hear you, in metres. Host setting.</string>

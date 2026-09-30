@@ -80,6 +80,7 @@
   <string name="vc.common.on">開</string>
   <string name="vc.common.off">關</string>
   <string name="vc.player.auto">自動</string>
+  <string name="vc.player.autoVolume">自動調整音量</string>
   <string name="vc.cat.audio">音訊</string>
   <string name="vc.cat.devices">裝置</string>
   <string name="vc.cat.keybinds">快捷鍵</string>
@@ -88,7 +89,8 @@
   <string name="vc.settings.open">開啟</string>
   <string name="vc.settings.help.micVolume">麥克風的輸入增益。100% 為正常音量；只有當別人說你聲音太小時才調高。</string>
   <string name="vc.settings.help.masterVolume">所有其他玩家的整體播放音量。100% 為正常音量。</string>
-  <string name="vc.settings.help.playerVolume">單獨調整每位玩家的音量並開啟自動音量。會開啟 F3 視窗。</string>
+  <string name="vc.settings.help.playerAutoVolume">自動把所有玩家的音量維持在穩定水平。開啟時下方滑條唯讀。</string>
+  <string name="vc.settings.help.playerVolume">單獨調整每位玩家的音量。會開啟 F3 視窗。</string>
   <string name="vc.settings.help.microphone">語音聊天取樣用的麥克風。選擇「系統預設」即可使用系統預設裝置。</string>
   <string name="vc.settings.help.speaker">語音聊天的輸出裝置。選擇「系統預設」即可使用系統預設裝置。</string>
   <string name="vc.settings.help.maxChatDistance">其他玩家還能聽到你的距離（公尺）。房主設定。</string>

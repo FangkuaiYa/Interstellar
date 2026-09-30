@@ -243,7 +243,7 @@ public static class VoiceConfig
     // thread reads these (profile updates) while the UI thread writes.
     public static readonly Dictionary<string, float> PlayerVolumes = new();
     private static readonly object PlayerStateLock = new();
-    private static bool _volumesDirty, _autoDirty;
+    private static bool _volumesDirty;
 
     public static float GetPlayerVolume(string playerName)
     {
@@ -267,19 +267,18 @@ public static class VoiceConfig
     }
 
     /// <summary>
-    /// Writes pending per-player volume/auto changes to the config file.
+    /// Writes pending per-player volume changes to the config file.
     /// Called once per frame from VCManager.Update.
     /// </summary>
     public static void FlushPending()
     {
-        bool vol, auto;
+        bool vol;
         lock (PlayerStateLock)
         {
-            vol = _volumesDirty; auto = _autoDirty;
-            _volumesDirty = false; _autoDirty = false;
+            vol = _volumesDirty;
+            _volumesDirty = false;
         }
         if (vol) SavePlayerVolumes();
-        if (auto) SavePlayerAutoVolume();
     }
 
     private static void SavePlayerVolumes()
@@ -323,44 +322,18 @@ public static class VoiceConfig
         }
     }
 
-    // ── Per-player "auto volume" toggle (remembered by player name) ─
-    // When enabled for a player, VCPlayer auto-levels that player's output
-    // volume every frame instead of using the fixed PlayerVolumes value,
-    // and the slider in PlayerVolumeWindow is shown as non-interactive.
-    public static readonly HashSet<string> PlayerAutoVolume = new();
-
-    public static bool GetPlayerAutoVolume(string playerName)
+    // ── Auto volume (one global switch, on the player-volume page) ────
+    // When on, VCPlayer auto-levels every client's output volume every
+    // frame instead of using the fixed PlayerVolumes value, and the panel
+    // shows the sliders as read-only. The legacy per-player set below is
+    // read once at startup purely to seed this switch's default.
+    public static bool AutoVolume
     {
-        if (string.IsNullOrEmpty(playerName)) return false;
-        lock (PlayerStateLock) return PlayerAutoVolume.Contains(playerName);
+        get => _autoVolumeEnabled?.Value ?? false;
+        set { if (_autoVolumeEnabled != null) _autoVolumeEnabled.Value = value; }
     }
 
-    public static void SetPlayerAutoVolume(string playerName, bool auto)
-    {
-        if (string.IsNullOrEmpty(playerName)) return;
-        lock (PlayerStateLock)
-        {
-            if (auto) PlayerAutoVolume.Add(playerName);
-            else PlayerAutoVolume.Remove(playerName);
-            _autoDirty = true;
-        }
-    }
-
-    private static void SavePlayerAutoVolume()
-    {
-        if (_savedPlayerAutoVolume == null) return;
-        var sb = new System.Text.StringBuilder();
-        lock (PlayerStateLock)
-        {
-            foreach (var name in PlayerAutoVolume)
-            {
-                if (string.IsNullOrEmpty(name)) continue;
-                if (sb.Length > 0) sb.Append(';');
-                sb.Append(name.Replace(';', '_').Replace('=', '_'));
-            }
-        }
-        _savedPlayerAutoVolume.Value = sb.ToString();
-    }
+    private static readonly HashSet<string> PlayerAutoVolume = new();
 
     private static void LoadPlayerAutoVolume()
     {
@@ -591,6 +564,7 @@ public static class VoiceConfig
     private static ConfigEntry<float>? _hotkeyBtnScale;
     private static ConfigEntry<bool>? _noiseSuppression, _echoCancellation;
     private static ConfigEntry<bool>? _vadEnabled;
+    private static ConfigEntry<bool>? _autoVolumeEnabled;
     private static ConfigEntry<float>? _hostMaxDist;
     private static ConfigEntry<bool>? _hostWallsBlock, _hostOnlyHearInSight, _hostImpGhost;
     private static ConfigEntry<bool>? _hostOnlyGhost, _hostHearVent, _hostHearVentPlayers, _hostVentChat;
@@ -686,8 +660,14 @@ public static class VoiceConfig
         _publicLang = cfg.Bind("VoiceChat.Room", "PublicLanguage", "en");
 
         _savedPlayerAutoVolume = cfg.Bind("VoiceChat", "PlayerAutoVolume", "",
-            "Semicolon-separated list of player names with auto-volume enabled.");
+            "Legacy: player names that had auto-volume before it became a single global switch.");
         LoadPlayerAutoVolume();
+        // Seed the global switch once from the legacy per-player set (any player was
+        // auto → global on); once the key exists in the file this default is ignored.
+        bool legacyAuto;
+        lock (PlayerStateLock) legacyAuto = PlayerAutoVolume.Count > 0;
+        _autoVolumeEnabled = cfg.Bind("VoiceChat", "AutoVolume", legacyAuto,
+            "Auto-adjust every player's volume toward the target speech level.");
         _savedPlayerVolumes = cfg.Bind("VoiceChat", "PlayerVolumes", "",
             "Per-player volume overrides (0%-200%), remembered by player name. Internal serialized format.");
         LoadPlayerVolumes();

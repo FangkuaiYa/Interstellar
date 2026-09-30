@@ -150,11 +150,12 @@ public class VCRoom : IConnectionContext, IHasAudioPropertyNode, IMicrophoneCont
         }
         _localLevel = max;
         bool shouldSend = !VoiceConfig.VADEnabled || _micPre.IsSpeech;
-        if (!Mute && shouldSend)
+        bool gagged = BlackmailVoiceGate.Active;
+        if (!Mute && !gagged && shouldSend)
         {
             this.connection.SendAudio(samples, samplesLength, samplesMilliseconds);
         }
-        else if (Mute) System.Threading.Interlocked.Increment(ref _dropMute);
+        else if (Mute || gagged) System.Threading.Interlocked.Increment(ref _dropMute);
         else System.Threading.Interlocked.Increment(ref _dropVad);
         OnAudioSent(samples, samplesLength);
     }
@@ -163,23 +164,15 @@ public class VCRoom : IConnectionContext, IHasAudioPropertyNode, IMicrophoneCont
     public int TxDropMute => _dropMute;
     public int TxDropVad => _dropVad;
     public bool HasPeers => connection.HasPeers;
-    /// <summary>Why the microphone is (or is not) producing frames right now —
-    /// printed by [VC:Diag] so a silent session is attributable in one line.</summary>
     public string SendGate =>
         Mute ? "mute"
+        : BlackmailVoiceGate.Active ? "blackmail"
         : VoiceConfig.VADEnabled && !_micPre.IsSpeech ? "vad"
         : !connection.HasPeers ? "nopeers"
         : "ok";
 
     ISampleProvider? ISpeakerContext.GetEndpoint() => audioManager.Endpoint;
 
-    /// <summary>
-    /// Decays the far-end (remote playback) level when no audio frames are
-    /// arriving. Without this, _farEndLevel freezes at its last value the
-    /// moment the remote side goes silent (their VAD stops sending), and the
-    /// echo-duck in AudioPreprocessor keeps crushing the local mic forever —
-    /// nobody can hear us until the room is restarted.
-    /// </summary>
     public void DecayFarEnd(float dt)
     {
         if (_farEndLevel > 0f)
@@ -395,7 +388,9 @@ public class VCRoom : IConnectionContext, IHasAudioPropertyNode, IMicrophoneCont
         Speaker = null;
     }
 
-    // ── Public lobby ──────────────────────────────────────────
+    /// <summary>True while the control socket can carry lobby emits — the public
+    /// lobby sync waits on this instead of consuming a change Emit would drop.</summary>
+    public bool IsControlSocketOpen => connection.IsControlSocketOpen;
 
     public async System.Threading.Tasks.Task PublishLobby(string code, PublicLobbyManager.LobbyInfo info)
         => await connection.PublishLobby(code, info);

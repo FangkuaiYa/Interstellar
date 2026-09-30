@@ -39,9 +39,29 @@ public static class PublicLobbyManager
                 new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
             if (list != null)
                 foreach (var l in list) LobbyMap[l.id] = l;
+            // Field names of the first entry, no values — the deployed server may
+            // spell the room code differently than "code" (copy reads it from here).
+            try
+            {
+                using var doc = JsonDocument.Parse(json);
+                if (doc.RootElement.ValueKind == JsonValueKind.Array
+                    && doc.RootElement.GetArrayLength() > 0
+                    && doc.RootElement[0].ValueKind == JsonValueKind.Object)
+                {
+                    var names = new List<string>();
+                    foreach (var p in doc.RootElement[0].EnumerateObject()) names.Add(p.Name);
+                    InterstellarPlugin.Logger?.LogInfo(
+                        "[VC] Lobby entry fields: " + string.Join(",", names));
+                }
+            }
+            catch { }
         }
-        catch { }
+        catch (Exception ex)
+        { InterstellarPlugin.Logger?.LogWarning("[VC] Lobby new parse failed: " + ex.GetType().Name); }
         IsLoading = false;
+        // A fresh snapshot: ask the server for every joinable row's code so the
+        // rows show real join codes instead of the mods fallback.
+        PublicLobbyWindow.Instance?.FetchMissingCodes();
     }
 
     internal static void OnUpdateLobby(string json)
@@ -50,9 +70,22 @@ public static class PublicLobbyManager
         {
             var lobby = JsonSerializer.Deserialize<LobbyInfo>(json,
                 new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-            if (lobby != null) LobbyMap[lobby.id] = lobby;
+            if (lobby != null)
+            {
+                // The wire object never carries `code` (BCL rebuilds the entry
+                // from its own field list) — an update must not blank what a
+                // fetch or a Copy press already learned about this row.
+                if (string.IsNullOrEmpty(lobby.code)
+                    && LobbyMap.TryGetValue(lobby.id, out var prev)
+                    && !string.IsNullOrEmpty(prev.code))
+                    lobby.code = prev.code;
+                LobbyMap[lobby.id] = lobby;
+                if (lobby.gameState == 0 && string.IsNullOrEmpty(lobby.code))
+                    PublicLobbyWindow.Instance?.FetchMissingCodes();
+            }
         }
-        catch { }
+        catch (Exception ex)
+        { InterstellarPlugin.Logger?.LogWarning("[VC] Lobby update parse failed: " + ex.GetType().Name); }
     }
 
     internal static void OnRemoveLobby(int id)
@@ -73,11 +106,15 @@ public static class PublicLobbyManager
         LobbyMap.Clear();
     }
 
+    /// <summary>BCL's wire enum for lobby entries: 0=Lobby 1=Tasks 2=Discussion
+    /// 3=Menu 4=Unknown. The server hands out join codes only for 0 and greys
+    /// every other state, so the client speaks this numbering end to end —
+    /// publish, display and the Copy button all agree with it.</summary>
     public static string GetGameStateName(int state)
     {
         return state switch
         {
-            0 => "Menu", 1 => "Lobby", 2 => "Tasks", 3 => "Discussion", _ => "?"
+            0 => "Lobby", 1 => "Tasks", 2 => "Discussion", 3 => "Menu", _ => "?"
         };
     }
 }

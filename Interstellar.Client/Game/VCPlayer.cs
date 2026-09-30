@@ -85,7 +85,7 @@ public class VCPlayer
     public void SetVolume(float v)
     {
         if (!float.IsFinite(v)) return;
-        if (VoiceConfig.GetPlayerAutoVolume(_playerName)) return;
+        if (VoiceConfig.AutoVolume) return; // the global switch owns the level now
         _clientVolume.Volume = Math.Clamp(v, 0f, 2f);
     }
 
@@ -96,8 +96,7 @@ public class VCPlayer
 
     private void ApplyAutoVolume()
     {
-        if (string.IsNullOrEmpty(_playerName) || !VoiceConfig.GetPlayerAutoVolume(_playerName))
-            return;
+        if (!VoiceConfig.AutoVolume) return;
 
         float level = _levelMeter.Level;
         if (level > 0.002f)
